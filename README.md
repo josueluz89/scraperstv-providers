@@ -24,6 +24,8 @@ lib/
   core/
     constants/ -> sources.dart (kRegisteredSources), app_urls.dart
     errors/    -> scraper_exception.dart
+  features/
+    live/       -> live_sources.dart (URLs M3U), m3u_parser.dart, live_repository.dart + UI
 ```
 
 ## Fuentes Home / Listado + Búsqueda (`registry.dart`)
@@ -57,6 +59,15 @@ lib/
 | smartpelis | `https://smartpelis.tv` | `smartpelis_extractor.dart` |
 | vidsrc | `https://vidsrc.me` (+ .to / .xyz fallback) | `vidsrc_extractor.dart` |
 | customapi | APIs PHP usuario | `datasources/remote/sources/custom_api.dart` |
+
+## En vivo M3U (`features/live/`)
+
+| id | tab | url actual | ttl |
+|----|-----|------------|-----|
+| magistv | TV | `https://raw.githubusercontent.com/CINECITY2023/cinecity/cinecity.net/principal.m3u` | 6h |
+| sportsevents | Deportes | `https://raw.githubusercontent.com/BuddyChewChew/sports/refs/heads/main/liveeventsfilter.m3u8` | 5min |
+
+Archivos: `data/live_sources.dart` (cambiar URL aquí si muere), `data/m3u_parser.dart`, `data/live_repository.dart`, `domain/live_channel.dart`.
 
 ## Cómo arreglar cuando cae una web
 
