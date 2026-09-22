@@ -1,0 +1,14 @@
+# Dart / Flutter espejo
+.dart_tool/
+.build/
+*.g.dart
+*.freezed.dart
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
