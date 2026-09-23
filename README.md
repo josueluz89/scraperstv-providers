@@ -51,7 +51,7 @@ lib/
 | cinesrc | `https://cinesrc.st/embed/` | `cinesrc_extractor.dart` |
 | cinecalidad | `https://www.cinecalidad.am` | `cinecalidad_extractor.dart` |
 | tioplus | `https://tioplus.app` | `tioplus_extractor.dart` |
-| fuegocine | `https://www.modlyo.com/api/servidores.php` | `fuegocine_extractor.dart` |
+| fuegocine | `https://www.fuegocine.com` (Blogger, lista `_SV_LINKS` del post) | `fuegocine_extractor.dart` |
 | hackstore | `https://hackstore.mx` | `hackstore_extractor.dart` |
 | pelisplus | `https://www.pelisplushd.la` | `pelisplus_extractor.dart` |
 | pelispedia | `https://pelispedia.is` | `pelispedia_extractor.dart` |

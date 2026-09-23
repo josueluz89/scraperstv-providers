@@ -336,6 +336,27 @@
       "contentLanguage": [
         "es"
       ]
+    },
+    {
+      "id": "fuegocine",
+      "name": "FuegoCine",
+      "description": "Scrape del sitio (Blogger, lista _SV_LINKS del post) tras morir la API modlyo.com. Verificado 2026-09-23: Dune2 4, Deadpool y Wolverine 5, IntensaMente 2 2, Reacher S2E3 3, The Boys S3E1 3.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/fuegocine.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=fuegocine.com&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
     }
   ]
 }
