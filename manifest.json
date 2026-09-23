@@ -151,11 +151,12 @@
     {
       "id": "poseidon",
       "name": "PoseidonHD2",
-      "description": "Verificado 2026-09-23: Dune2 8 embeds (solo pelis; series 0).",
+      "description": "Verificado 2026-09-23: Dune2 8 embeds, GoT S1E1 3 (fix series).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
-        "movie"
+        "movie",
+        "tv"
       ],
       "filename": "providers/poseidon.js",
       "enabled": true,
@@ -234,11 +235,12 @@
     {
       "id": "pelisplus",
       "name": "PelisPlusHD",
-      "description": "Verificado 2026-09-23: Dune2 1 (solo pelis; series 0).",
+      "description": "Verificado 2026-09-23: Dune2 1, GoT S1E1 1 (fix series).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
-        "movie"
+        "movie",
+        "tv"
       ],
       "filename": "providers/pelisplus.js",
       "enabled": true,
@@ -296,11 +298,12 @@
     {
       "id": "seriesmetro_kl",
       "name": "SeriesMetro KL",
-      "description": "Verificado 2026-09-23: Dune2 1 (solo pelis; series 0 por bug TMDB).",
+      "description": "Verificado 2026-09-23: Dune2 1, GoT S1E1 1 (fix TMDB series + episodio).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
-        "movie"
+        "movie",
+        "tv"
       ],
       "filename": "providers/seriesmetro_kl.js",
       "enabled": true,

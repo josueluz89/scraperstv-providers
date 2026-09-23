@@ -339,7 +339,8 @@ function resolveAll(urls, limit) {
 function extractStreams(tmdbId, mediaType, season, episode) {
   const id = parseInt(tmdbId, 10);
   if (!id || id <= 0) return Promise.resolve([]);
-  const esPelicula = mediaType !== "tv";
+  const _mt = (mediaType === "series" || mediaType === "anime") ? "tv" : mediaType;
+  const esPelicula = _mt !== "tv";
   const s = parseInt(season, 10) || 1;
   const e = parseInt(episode, 10) || 1;
 

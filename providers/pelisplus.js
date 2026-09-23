@@ -485,7 +485,8 @@ async function getStreams(tmdbId, mediaType, season, episode) {
   try {
     var id = parseInt(tmdbId, 10);
     if (!id || id <= 0) return [];
-    var esPelicula = mediaType !== "tv";
+    var _mt = (mediaType === "series" || mediaType === "anime") ? "tv" : mediaType;
+    var esPelicula = _mt !== "tv";
 
     var titulos = await getTmdbTitulos(id, esPelicula ? "movie" : "tv");
     if (!titulos.length) return [];

@@ -129,7 +129,7 @@ function Y(n, t, e, r) {
     try {
       let s = new URLSearchParams({ action: "action_select_season", post: o, season: String(e) }), l = [...(yield (yield fetch(`${v}/wp-admin/admin-ajax.php`, { method: "POST", headers: x(m({}, E), { "Content-Type": "application/x-www-form-urlencoded", Referer: n }), body: s.toString() })).text()).matchAll(/href="([^"]+\/capitulo\/[^"]+)"/g)].map((d) => d[1]).find((d) => {
         let f = d.match(/temporada-(\d+)-capitulo-(\d+)/i);
-        return f && parseInt(f[1]) === e && parseInt(f[2]) === r;
+        return f && parseInt(f[1]) === parseInt(e) && parseInt(f[2]) === parseInt(r);
       });
       return l ? (console.log(`[SeriesMetro] \u2713 Episodio S${e}E${r} encontrado: ${l}`), l) : (console.log(`[SeriesMetro] Episodio S${e}E${r} no encontrado`), null);
     } catch (s) {
@@ -169,6 +169,7 @@ function J(n, t, e, r) {
   return p(this, null, function* () {
     if (!n || !t)
       return [];
+    if (t === "series" || t === "anime") t = "tv";
     let o = Date.now();
     console.log(`[SeriesMetro] Buscando: TMDB ${n} (${t})${e ? ` S${e}E${r}` : ""}`);
     try {
