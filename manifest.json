@@ -147,6 +147,206 @@
       "contentLanguage": [
         "es"
       ]
+    },
+    {
+      "id": "poseidon",
+      "name": "Poseidón",
+      "description": "PoseidonHD: enlaces directos y embeds en latino/castellano.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/poseidon.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "hackstore",
+      "name": "Hackstore",
+      "description": "Hackstore: servidores goodstream y similares.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/hackstore.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "pelisplus",
+      "name": "PelisPlus",
+      "description": "PelisPlusHD con busqueda por tmdb.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pelisplus.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "tioplus",
+      "name": "TioPlus",
+      "description": "TioPlus: embeds en varios idiomas.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/tioplus.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "cinesrc",
+      "name": "CineSRC",
+      "description": "CineSRC: embed directo por tmdb.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinesrc.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "fuegocine",
+      "name": "FuegoCine",
+      "description": "FuegoCine: embeds de la web.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/fuegocine.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "pelispedia",
+      "name": "PelisPedia",
+      "description": "PelisPedia: servidores propios.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pelispedia.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "seriesmetro",
+      "name": "SeriesMetro",
+      "description": "SeriesMetro: series y peliculas.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/seriesmetro.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "smartpelis",
+      "name": "SmartPelis",
+      "description": "SmartPelis: servidores propios.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/smartpelis.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "vidsrc",
+      "name": "VidSrc",
+      "description": "VidSrc: API publica por tmdb.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidsrc.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
     }
   ]
 }
