@@ -23,6 +23,15 @@
 // paso 4 devuelve los enlaces DIRECTOS en claro (array), se devuelven esos en su
 // lugar, que es lo mejor para el reproductor.
 //
+// DOS DETALLES MEDIDOS EN VIVO (si se cambian, el enlace muere):
+//   - El token `vs=` del paso 2 esta atado al host que lo emitio: la peticion al
+//     player solo da 200 si el header Referer es esa MISMA pagina del embed
+//     (p.ej. https://vidsrc.sh/embed/movie/278). Con otro Referer (o sin el) da
+//     403 "Expired". Por eso el stream del player sale con ese Referer.
+//   - El token caduca solo: sirvio a los ~30s y ya daba 403 a los ~90s. Asi que
+//     ademas del player tokenizado se devuelve la pagina del embed (estable), que
+//     pide un token nuevo cada vez que se carga (requiere un reproductor con JS).
+//
 // NOTA (bloqueo conocido): cuando la proteccion esta activa, `data.stream_urls`
 // viene CIFRADO (string base64 ChaCha20 con nonce = primeros 12 bytes) y solo se
 // descifra ejecutando el WebAssembly que acompaña la respuesta
@@ -257,18 +266,24 @@ function resolverProrcp(base, rcpUrl, referer) {
   });
 }
 
-function stream(url, title, quality) {
+function stream(url, title, quality, headers) {
   var base = origen(url);
+  var h = {
+    "User-Agent": UA,
+    Referer: base ? base + "/" : "https://vidsrc.me/",
+    Origin: base || "https://vidsrc.me",
+  };
+  if (headers) {
+    for (var k in headers) {
+      if (Object.prototype.hasOwnProperty.call(headers, k)) h[k] = headers[k];
+    }
+  }
   return {
     title: title,
     quality: quality || "HD",
     language: IDIOMA,
     url: url,
-    headers: {
-      "User-Agent": UA,
-      Referer: base ? base + "/" : "https://vidsrc.me/",
-      Origin: base || "https://vidsrc.me",
-    },
+    headers: h,
   };
 }
 
@@ -278,11 +293,11 @@ async function getStreams(tmdbId, mediaType, season, episode) {
   var deadline = Date.now() + BUDGET_MS;
   var fallback = "";
 
-  function push(url, title, quality) {
+  function push(url, title, quality, headers) {
     if (!url || vistos[url]) return false;
     if (!/^https?:\/\//i.test(url)) return false;
     vistos[url] = 1;
-    streams.push(stream(url, title, quality));
+    streams.push(stream(url, title, quality, headers));
     return true;
   }
 
@@ -332,7 +347,14 @@ async function getStreams(tmdbId, mediaType, season, episode) {
               push(directos[d], (titulo ? titulo + " · " : "") + "VidSrc Directo", calidad);
             }
           } else {
-            push(src, titulo ? "VidSrc · " + titulo : "VidSrc (Player)", calidad);
+            // El player SOLO responde si el Referer es la misma pagina del embed que
+            // emitio el token (cualquier otro host/origen -> 403 "Expired"), y el
+            // token caduca en ~60s, asi que se manda la URL final del embed.
+            var hGate = { Referer: res.url || embedUrl, Origin: base };
+            push(src, titulo ? "VidSrc · " + titulo : "VidSrc (Player)", calidad, hGate);
+            // Segundo enlace, estable: la propia pagina del embed, que pide un token
+            // nuevo en cada carga (necesita un reproductor que ejecute JS).
+            push(res.url || embedUrl, "VidSrc Embed", calidad);
           }
           if (streams.length) break;
         }

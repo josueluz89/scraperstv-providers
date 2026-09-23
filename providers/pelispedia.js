@@ -22,6 +22,24 @@ const PAGE_TIMEOUT = 12000;
 const EMBED_TIMEOUT = 10000;
 const TOTAL_TIMEOUT = 35000;
 
+const BROWSER_ACCEPT =
+  "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+const BROWSER_LANG = "es-ES,es;q=0.9,en;q=0.8";
+
+/**
+ * Cabeceras que se entregan al reproductor.
+ * Importante: el CDN de fastream responde 403 al .m3u8 si falta el Accept de
+ * navegador (comprobado: sin Accept → 403, con Accept → 200 y master real).
+ */
+function mediaHeaders(referer) {
+  return {
+    "User-Agent": UA,
+    Accept: BROWSER_ACCEPT,
+    "Accept-Language": BROWSER_LANG,
+    Referer: referer || BASE + "/",
+  };
+}
+
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 
 function fetchText(url, extraHeaders, timeoutMs) {
@@ -351,7 +369,7 @@ async function detectQuality(url) {
 // ─── Resolución de embeds ───────────────────────────────────────────────────
 
 /**
- * Devuelve { url, quality, referer } o null.
+ * Devuelve { url, quality, headers } o null.
  * Mismo recorrido que _resolveEmbed del Dart, y después intenta sacar el
  * archivo directo (.m3u8/.mp4) del HTML del embed.
  */
@@ -397,7 +415,7 @@ async function resolveEmbed(embedUrl, pageUrl) {
     return {
       url: media,
       quality: qualityFromHint(embedHtml) || (await detectQuality(media)) || "HD",
-      referer: originOf(url) ? originOf(url) + "/" : pageUrl,
+      headers: mediaHeaders(originOf(url) ? originOf(url) + "/" : pageUrl),
     };
   }
   return null;
@@ -409,7 +427,7 @@ async function directOrEmbed(url, pageUrl) {
     return {
       url: url,
       quality: (await detectQuality(url)) || "HD",
-      referer: originOf(url) ? originOf(url) + "/" : pageUrl,
+      headers: mediaHeaders(originOf(url) ? originOf(url) + "/" : pageUrl),
     };
   }
   const html = await fetchText(url, null, EMBED_TIMEOUT);
@@ -423,14 +441,14 @@ async function directOrEmbed(url, pageUrl) {
       return {
         url: media,
         quality: q || "HD",
-        referer: originOf(url) ? originOf(url) + "/" : pageUrl,
+        headers: mediaHeaders(originOf(url) ? originOf(url) + "/" : pageUrl),
       };
     }
   }
   return {
     url: url,
     quality: "HD",
-    referer: pageUrl || BASE + "/",
+    headers: mediaHeaders(pageUrl || BASE + "/"),
   };
 }
 
@@ -471,7 +489,7 @@ async function scrapePage(html, pageUrl, isMovie) {
       language: language,
       url: resolved.url,
       quality: resolved.quality || "HD",
-      referer: resolved.referer || pageUrl,
+      headers: resolved.headers || mediaHeaders(pageUrl),
     });
   }
 
@@ -498,7 +516,7 @@ async function scrapePage(html, pageUrl, isMovie) {
         language: info ? info.language : "Desconocido",
         url: resolved.url,
         quality: resolved.quality || "HD",
-        referer: resolved.referer || pageUrl,
+        headers: resolved.headers || mediaHeaders(pageUrl),
       });
       opt++;
     }
@@ -552,7 +570,7 @@ async function extractStreams(tmdbId, mediaType, season, episode) {
       quality: r.quality || "HD",
       language: lang,
       url: url,
-      headers: { Referer: r.referer || pageUrl + "/", "User-Agent": UA },
+      headers: r.headers || mediaHeaders(pageUrl + "/"),
     });
     if (typeof setTimeout !== "undefined") {
       await new Promise(function (res) { setTimeout(res, 30); });

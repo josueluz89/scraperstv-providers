@@ -1,79 +1,103 @@
-// PelisPlus (pelisplushd) — puerto a JS de
-// lib/data/extractors/providers/pelisplus_extractor.dart
+// PelisPlus — puerto a JS de lib/data/extractors/providers/pelisplus_extractor.dart
+// Formato que ejecuta el motor de MasterScrap: CommonJS `module.exports = { getStreams }`,
+// solo fetch + RegExp (+ JSON), nunca lanza (devuelve [] ante cualquier fallo).
 //
-// El sitio tiene estructura propia:
-//   1) Se busca la ficha por titulo (TMDB es-MX / es-ES / en-US) en /search?s=
-//   2) Pelicula  -> /pelicula/<slug>
-//      Serie     -> /serie/<slug>/temporada/<S>/capitulo/<E>
-//   3) Los servidores viven en el HTML de la ficha, en dos formatos:
-//        a) peliculas:  <li data-url="https://host/e/id" data-name="Español Latino">
-//        b) capitulos:  <div id="link_url"><span lid="1" url="https://host/embed-x.html">
-//      (tambien existe el formato viejo `var options = {...}`)
-//   4) NO se resuelve HLS: se devuelven los embeds; el motor (masters.js) ya
-//      trae getEmbedResolver()/mapDomain() para streamwish, vidhide, voe, etc.
+// Flujo del sitio (estructura propia, no es un embed directo por TMDB):
+//   1) Titulos desde TMDB (es-MX, es-ES, en-US) + variantes
+//   2) /search?s=<titulo>  ->  ficha /pelicula/<slug>  (o /serie/<slug>)
+//   3) Serie: /serie/<slug>/temporada/<S>/capitulo/<E>
+//   4) Los embeds vienen en el HTML de la ficha. Formatos soportados:
+//        A) <li data-url="..." data-name="Español Latino" class="playurl">   (peliculas)
+//        B) <span lid="1" url="https://host/embed-x.html">                   (capitulos)
+//        C) var options = { "Latino": [ {name, url} ] }                      (tema viejo)
+//        D) var video = []; video[1] = 'https://host/f/ttID/';               (mirror viejo)
+//      NO se resuelve HLS: se devuelven los embeds y el motor (masters.js) aplica
+//      getEmbedResolver()/mapDomain() para streamwish, vidhide, voe, embed69...
 //
 // Notas del puerto:
-//  - El Dart detectaba el idioma con `name + TODO el html`, asi que cualquier
-//    palabra "latino" en la pagina marcaba todos los servidores como Latino y
-//    _isLanguageSupported() descartaba los subtitulados. Aqui se detecta por
-//    servidor (data-name / host) y se conservan TODOS los idiomas, etiquetados.
-//  - El dominio rota: www.pelisplushd.la hoy redirige a pelisplushd.to, por eso
-//    se prueban varios dominios en orden.
+//  - El Dart detectaba idioma con `name + TODO el html`, asi que cualquier
+//    "latino" en la pagina marcaba todos los servidores como Latino y
+//    _isLanguageSupported() tiraba los subtitulados. Aqui se detecta por
+//    servidor (data-name / tab / host) y se conservan TODOS, etiquetados.
+//  - El dominio rota y www.pelisplushd.la redirige a pelisplushd.to. Se prueban
+//    varios dominios en orden; si uno responde el challenge de Cloudflare
+//    ("Just a moment..." / 403) se descarta y se pasa al siguiente.
 var UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-var ACCEPT_HTML =
+var ACCEPT =
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
 
-var DOMAINS = ["https://pelisplushd.to", "https://www.pelisplushd.la"];
+// .to = sitio bueno (trae idiomas y mas servidores); .bz = espejo viejo.
+// www.pelisplushd.la (el del Dart) ya solo es un 302 a pelisplushd.to, asi que
+// no aporta nada: incluirlo costaba un request extra por busqueda.
+var DOMAINS = ["https://pelisplushd.to", "https://pelisplushd.bz"];
+
 var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
 var TIMEOUT = 12000;
-var MAX_TITLES = 6; // el Dart probaba 12; con 6 basta y ahorra requests
+var MAX_TITULOS = 4; // por dominio
+var MAX_CANDIDATOS = 3; // fichas que se llegan a abrir
+
+var muertos = {}; // dominio -> challenge de Cloudflare (se salta)
 
 // ─────────────────────────────────────────────────────────
 // HTTP
 // ─────────────────────────────────────────────────────────
 
 function conTimeout(url, opts, ms) {
+  var o = opts || {};
   if (typeof AbortController === "undefined" || typeof setTimeout === "undefined") {
-    return fetch(url, opts);
+    return fetch(url, o);
   }
   var ctrl = new AbortController();
-  var o = opts || {};
   o.signal = ctrl.signal;
-  var timer = setTimeout(function () {
+  var t = setTimeout(function () {
     try {
       ctrl.abort();
     } catch (e) {}
   }, ms || TIMEOUT);
   return fetch(url, o).then(
     function (r) {
-      clearTimeout(timer);
+      clearTimeout(t);
       return r;
     },
     function (e) {
-      clearTimeout(timer);
+      clearTimeout(t);
       throw e;
     }
   );
 }
 
+function esChallenge(status, body) {
+  if (status === 403 || status === 503) return true;
+  var b = String(body || "");
+  return b.length < 20000 && /just a moment|cf-mitigated|enable javascript and cookies/i.test(b);
+}
+
 function fetchText(url, referer) {
   var headers = {
     "User-Agent": UA,
-    Accept: ACCEPT_HTML,
+    Accept: ACCEPT,
     "Accept-Language": "es-ES,es;q=0.9",
     "Cache-Control": "no-cache",
   };
   if (referer) headers.Referer = referer;
   return conTimeout(url, { headers: headers, redirect: "follow" }, TIMEOUT)
     .then(function (res) {
-      if (!res || !res.ok) return null;
-      return res.text();
+      if (!res) return null;
+      return res.text().then(function (body) {
+        if (!res.ok || esChallenge(res.status, body)) return null;
+        return body;
+      });
     })
     .catch(function () {
       return null;
     });
+}
+
+function origen(url) {
+  var m = String(url || "").match(/^https?:\/\/[^\/]+/i);
+  return m ? m[0] : "";
 }
 
 function fetchJson(url) {
@@ -89,27 +113,26 @@ function fetchJson(url) {
 }
 
 // ─────────────────────────────────────────────────────────
-// TMDB — titulos (es-MX, es-ES, en-US) + variantes
+// TMDB — titulos (es-MX, es-ES, en-US) + variantes de busqueda
 // ─────────────────────────────────────────────────────────
 
-function tmdbTitle(type, id, lang) {
+function push(arr, v) {
+  var s = String(v == null ? "" : v).trim();
+  if (s && arr.indexOf(s) < 0) arr.push(s);
+}
+
+function tmdbTitulo(type, id, lang) {
   var url =
-    "https://api.themoviedb.org/3/" +
-    type +
-    "/" +
-    id +
-    "?api_key=" +
-    TMDB_KEY +
+    "https://api.themoviedb.org/3/" + type + "/" + id + "?api_key=" + TMDB_KEY +
     (lang ? "&language=" + lang : "");
-  return fetchJson(url).then(function (data) {
-    if (!data) return "";
-    var t = data.title != null ? data.title : data.name;
-    t = t == null ? "" : String(t).trim();
-    return t;
+  return fetchJson(url).then(function (d) {
+    if (!d) return "";
+    var t = d.title != null ? d.title : d.name;
+    return t == null ? "" : String(t).trim();
   });
 }
 
-function getTmdbTitles(tmdbId, type) {
+function getTmdbTitulos(tmdbId, type) {
   var langs = ["es-MX", "es-ES", "en-US"];
   var base = [];
   var i = 0;
@@ -117,7 +140,7 @@ function getTmdbTitles(tmdbId, type) {
   function paso() {
     if (i >= langs.length) return Promise.resolve(base);
     var lang = langs[i++];
-    return tmdbTitle(type, tmdbId, lang).then(function (t) {
+    return tmdbTitulo(type, tmdbId, lang).then(function (t) {
       if (t && base.indexOf(t) < 0) base.push(t);
       return paso();
     });
@@ -126,7 +149,7 @@ function getTmdbTitles(tmdbId, type) {
   return paso()
     .then(function (list) {
       if (list.length) return list;
-      return tmdbTitle(type, tmdbId, null).then(function (t) {
+      return tmdbTitulo(type, tmdbId, null).then(function (t) {
         return t ? [t] : [];
       });
     })
@@ -139,40 +162,36 @@ function getTmdbTitles(tmdbId, type) {
         push(out, t.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s]/g, ""));
         push(out, t.replace(/\(\d{4}\)/g, "").trim());
       }
-      // Variantes cortas: util cuando el sitio titula distinto ("Matrix (1999)")
+      // Variantes cortas ("Matrix" en vez de "Matrix: Revoluciones")
       for (var j = 0; j < list.length; j++) {
-        var corte = String(list[j]).split(/[:(\-]/)[0].trim();
-        if (corte.length > 3) push(out, corte);
+        var corto = String(list[j]).split(/[:(\-]/)[0].trim();
+        if (corto.length > 3) push(out, corto);
       }
-      return out.slice(0, MAX_TITLES * 2);
+      return out.slice(0, MAX_TITULOS * 3);
     });
 }
 
-function push(arr, v) {
-  var s = String(v == null ? "" : v).trim();
-  if (s && arr.indexOf(s) < 0) arr.push(s);
-}
-
 // ─────────────────────────────────────────────────────────
-// Normalizacion / matching de titulos
+// Normalizacion y matching de titulos
 // ─────────────────────────────────────────────────────────
 
 function normTitle(title) {
   var s = String(title == null ? "" : title).toLowerCase();
-  s = s.replace(/á|à|ä|â/g, "a");
-  s = s.replace(/é|è|ë|ê/g, "e");
-  s = s.replace(/í|ì|ï|î/g, "i");
-  s = s.replace(/ó|ò|ö|ô/g, "o");
-  s = s.replace(/ú|ù|ü|û/g, "u");
-  s = s.replace(/ñ/g, "n");
-  s = s.replace(/[^a-z0-9\s]/g, " ");
-  s = s.replace(/\s+/g, " ").trim();
-  return s;
+  return s
+    .replace(/á|à|ä|â/g, "a")
+    .replace(/é|è|ë|ê/g, "e")
+    .replace(/í|ì|ï|î/g, "i")
+    .replace(/ó|ò|ö|ô/g, "o")
+    .replace(/ú|ù|ü|û/g, "u")
+    .replace(/ñ/g, "n")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
- * 100 = identicos. Si no, ratio de palabras significativas (>=80%), con
- * penalizacion por palabras extra ("matrix" gana a "matrix revoluciones").
+ * 100 = titulos identicos. Si no, ratio de palabras significativas (>=80%) con
+ * penalizacion por palabras extra ("matrix" le gana a "matrix revoluciones").
  */
 function matchScore(query, target) {
   var q = normTitle(query);
@@ -192,8 +211,7 @@ function matchScore(query, target) {
   }
   var ratio = hits / qWords.length;
   if (ratio < 0.8) return 0;
-  var extra = tWords.length - hits;
-  return ratio * 10 - extra;
+  return ratio * 10 - (tWords.length - hits);
 }
 
 function stripTags(html) {
@@ -204,24 +222,22 @@ function stripTags(html) {
 }
 
 // ─────────────────────────────────────────────────────────
-// Busqueda en el sitio
+// Busqueda: <a href="/pelicula/slug" data-title="VER ... Online Gratis HD">
 // ─────────────────────────────────────────────────────────
 
-/** <a href="/pelicula/slug" class="Posters-link" data-title="VER ... Online Gratis HD"> */
-function parseSearchResults(html, mediaType) {
+function parseResultados(html, mediaType) {
   var out = [];
-  var tipo = mediaType === "movie" ? "/pelicula/" : "/serie/";
+  var tipo = mediaType === "movie" ? "pelicula" : "serie";
   var re = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   var m;
   while ((m = re.exec(html)) !== null) {
     var href = m[1] || "";
-    if (href.indexOf(tipo) < 0) continue;
-    // Excluye las rutas de listado ( /peliculas, /series ) y los generos.
-    if (!/^\/(pelicula|serie)\/[^/?"]+\/?$/i.test(href)) continue;
+    // El mirror .bz publica hrefs absolutos; se valida siempre por la ruta.
+    var ruta = href.replace(/^https?:\/\/[^\/]+/i, "");
+    if (!new RegExp("^/?" + tipo + "/[^/?\"#]+/?$", "i").test(ruta)) continue;
 
-    var tag = m[0];
     var title = "";
-    var dt = tag.match(/data-title="([^"]*)"/i);
+    var dt = m[0].match(/data-title="([^"]*)"/i);
     if (dt) title = stripTags(dt[1]);
     if (!title) {
       var p = (m[2] || "").match(/<p[^>]*>([\s\S]*?)<\/p>/i);
@@ -230,67 +246,72 @@ function parseSearchResults(html, mediaType) {
     title = title
       .replace(/^ver\s+/i, "")
       .replace(/\s+online\s+gratis\s+hd\s*$/i, "")
-      .replace(/\s+online\s+latino\s+hd\s*$/i, "")
-      .replace(/\s+online\s+castellano\s+hd\s*$/i, "")
+      .replace(/\s+online\s+(latino|castellano|español)\s+hd\s*$/i, "")
       .replace(/\s+online\s+hd\s*$/i, "")
       .replace(/\(\d{4}\)\s*$/, "")
       .trim();
     if (!title) continue;
 
-    if (!/^https?:/i.test(href)) {
-      href = href.charAt(0) === "/" ? href : "/" + href;
-    }
     out.push({ href: href, title: title });
   }
   return out;
 }
 
-function absolutizar(base, href) {
-  if (/^https?:/i.test(href)) return href;
-  return base + (href.charAt(0) === "/" ? href : "/" + href);
-}
-
-/**
- * Devuelve {url, dominio} de la ficha. Busca por cada titulo en cada dominio
- * candidato y escoge el mejor match (exacto > parcial).
- */
-function findPageUrl(titles, mediaType) {
-  var best = null; // { score, href, base }
+/** Devuelve fichas candidatas ordenadas por score (mejor primero). */
+function buscarFichas(titulos, mediaType) {
+  var cands = [];
+  var vistos = {};
   var d = 0;
 
   function porDominio() {
-    if (d >= DOMAINS.length) return Promise.resolve(best);
+    if (d >= DOMAINS.length) return Promise.resolve(cands);
     var base = DOMAINS[d++];
+    if (muertos[base]) return porDominio();
+
     var i = 0;
+    var exacto = false;
 
     function porTitulo() {
-      if (i >= titles.length || (best && best.score >= 100)) {
-        return Promise.resolve();
-      }
-      var t = titles[i++];
+      if (i >= titulos.length || i >= MAX_TITULOS || exacto) return Promise.resolve();
+      var t = titulos[i++];
       var url = base + "/search?s=" + encodeURIComponent(t);
       return fetchText(url, base + "/").then(function (html) {
-        if (html) {
-          var res = parseSearchResults(html, mediaType);
-          for (var k = 0; k < res.length; k++) {
-            var sc = matchScore(t, res[k].title);
-            if (sc > 0 && (!best || sc > best.score)) {
-              best = { score: sc, href: res[k].href, base: base };
-            }
-          }
+        if (html === null) {
+          muertos[base] = 1;
+          return;
         }
-        if (best && best.score >= 100) return;
+        var res = parseResultados(html, mediaType);
+        for (var k = 0; k < res.length; k++) {
+          var sc = matchScore(t, res[k].title);
+          if (sc <= 0) continue;
+          var abs = /^https?:/i.test(res[k].href) ? res[k].href : base + res[k].href;
+          if (vistos[abs]) continue;
+          vistos[abs] = 1;
+          cands.push({ url: abs, score: sc, base: base });
+          if (sc >= 100) exacto = true;
+        }
+        if (exacto) return;
         return porTitulo();
       });
     }
 
     return porTitulo().then(function () {
-      if (best && best.score > 0) return best;
+      if (exacto || cands.length) {
+        cands.sort(function (a, b) {
+          return b.score - a.score;
+        });
+        if (exacto) return cands;
+      }
       return porDominio();
     });
   }
 
-  return porDominio();
+  return porDominio().then(function () {
+    cands.sort(function (a, b) {
+      return b.score - a.score;
+    });
+    return cands.slice(0, MAX_CANDIDATOS);
+  });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -300,24 +321,24 @@ function findPageUrl(titles, mediaType) {
 function hostLabel(url) {
   var m = String(url || "").match(/^https?:\/\/(?:www\.)?([^\/:]+)/i);
   if (!m) return "Servidor";
-  var host = m[1].toLowerCase();
-  var nombre = host.split(".")[0];
+  var nombre = m[1].toLowerCase().split(".")[0];
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
 }
 
 function esUrlServidor(url) {
   if (!/^https?:\/\//i.test(url)) return false;
-  if (/pelisplushd|google|cloudflare|sharethis|platform-api|doubleclick/i.test(url)) return false;
-  // Embeds utiles: /e/ID, /v/ID, /embed/..., embed-xxx.html, /f/ID
+  if (/pelisplushd|pelisplus|google|cloudflare|sharethis|platform-api|doubleclick|w3\.org/i.test(url))
+    return false;
   return (
-    /\/(e|v|embed|f|w|d|play)\/[^\/\s]+/i.test(url) ||
+    /\/(e|v|embed|f|w|d|play|u|file)\/[^\/\s"']/i.test(url) ||
     /embed-[a-z0-9]+\.html/i.test(url) ||
     /\.(html?|php|mp4|m3u8)(\?|$)/i.test(url)
   );
 }
 
 function leerAttr(tag, attr) {
-  var m = tag.match(new RegExp(attr + '\\s*=\\s*"([^"]*)"', "i")) ||
+  var m =
+    tag.match(new RegExp(attr + '\\s*=\\s*"([^"]*)"', "i")) ||
     tag.match(new RegExp(attr + "\\s*=\\s*'([^']*)'", "i"));
   return m ? m[1] : "";
 }
@@ -325,49 +346,56 @@ function leerAttr(tag, attr) {
 function extractServers(html) {
   var out = [];
   var seen = {};
+  var m;
 
   function agregar(url, name, lang) {
     url = String(url || "").trim();
-    if (!url || seen[url]) return;
-    if (!esUrlServidor(url)) return;
+    if (!url || seen[url] || !esUrlServidor(url)) return;
     seen[url] = 1;
     out.push({ url: url, name: name || "", language: lang || "" });
   }
 
-  // Metodo 1: <li ... data-url="..." ... data-name="..." class="playurl">
-  // (orden de atributos libre; el Dart exigia data-url antes de data-name)
+  // A) <li ... data-url="..." ... data-name="...">  (orden de atributos libre)
   var reLi = /<li\b[^>]*data-url="([^"]+)"[^>]*>/gi;
-  var m;
   while ((m = reLi.exec(html)) !== null) {
-    var tag = m[0];
-    var name = leerAttr(tag, "data-name");
-    agregar(m[1], name, detectLanguage(name, html));
+    var nom = leerAttr(m[0], "data-name");
+    agregar(m[1], nom, detectLanguage(nom, html));
   }
 
-  // Metodo 2: <div id="link_url"><span lid="1" url="https://host/embed-x.html">
+  // B) <span lid="1" url="https://host/embed-x.html">
   if (!out.length) {
     var reSpan = /<span\b[^>]*\burl="([^"]+)"[^>]*>/gi;
     while ((m = reSpan.exec(html)) !== null) {
-      var u = m[1];
-      agregar(u, hostLabel(u), detectLanguage("", html));
+      agregar(m[1], hostLabel(m[1]), detectLanguage("", html));
     }
   }
 
-  // Metodo 3: var options = { "Latino": [ {name, url}, ... ] }
+  // C) var options = { "Latino": [ {name, url}, ... ] }
   if (!out.length) {
-    var m3 = html.match(/var\s+options\s*=\s*(\{[\s\S]*?\});/i);
-    if (m3) {
-      var opts = parseJsObject(m3[1]);
+    var mo = html.match(/var\s+options\s*=\s*(\{[\s\S]*?\});/i);
+    if (mo) {
+      var opts = parseJsObject(mo[1]);
       Object.keys(opts).forEach(function (key) {
         var val = opts[key];
         if (Object.prototype.toString.call(val) !== "[object Array]") return;
         for (var i = 0; i < val.length; i++) {
-          var item = val[i];
-          if (item && typeof item === "object" && item.url) {
-            agregar(item.url, item.name || key, key);
-          }
+          var it = val[i];
+          if (it && typeof it === "object" && it.url) agregar(it.url, it.name || key, key);
         }
       });
+    }
+  }
+
+  // D) var video = []; video[1] = 'https://host/f/ttID/';  (+ tabs data-id)
+  if (!out.length) {
+    var tabs = {};
+    var reTab = /<li[^>]*data-id="(\d+)"[^>]*>[\s\S]{0,300}?<a[^>]*>([^<]*)<\/a>/gi;
+    var t;
+    while ((t = reTab.exec(html)) !== null) tabs[t[1]] = stripTags(t[2]);
+
+    var reVideo = /video\[(\d+)\]\s*=\s*['"]([^'"]+)['"]/gi;
+    while ((m = reVideo.exec(html)) !== null) {
+      agregar(m[2], tabs[m[1]] || hostLabel(m[2]), detectLanguage(tabs[m[1]] || "", html));
     }
   }
 
@@ -407,48 +435,39 @@ function parseJsObject(str) {
 }
 
 // ─────────────────────────────────────────────────────────
-// Idioma → etiqueta (igual criterio que unlimplay.js)
+// Idioma → etiqueta (mismo criterio que unlimplay.js)
 // ─────────────────────────────────────────────────────────
 
-function langToCode(lang) {
+function idomaLabel(lang) {
   var l = String(lang || "").toLowerCase();
-  if (l.indexOf("latino") >= 0 || /\blat\b/.test(l) || l.indexOf("es_mx") >= 0) return "es_MX";
-  if (l.indexOf("castellano") >= 0 || l.indexOf("español") >= 0 || l.indexOf("espanol") >= 0 || /\besp\b/.test(l))
-    return "es_ES";
-  if (l.indexOf("sub") >= 0 || l.indexOf("english") >= 0 || l.indexOf("ingles") >= 0 || l.indexOf("inglés") >= 0)
-    return "en_US";
-  return "es_MX";
-}
-
-function idiomaDe(lang) {
-  var c = langToCode(lang);
-  if (c === "es_ES") return "Español";
-  if (c === "en_US") return "Subtitulado";
-  return "Latino";
+  if (l.indexOf("latino") >= 0 || /\blat\b/.test(l) || l.indexOf("es_mx") >= 0) return "Latino";
+  if (
+    l.indexOf("castellano") >= 0 ||
+    l.indexOf("español") >= 0 ||
+    l.indexOf("espanol") >= 0 ||
+    /\besp\b/.test(l) ||
+    l.indexOf("es_es") >= 0
+  )
+    return "Español";
+  if (l.indexOf("sub") >= 0 || l.indexOf("english") >= 0 || l.indexOf("ingl") >= 0)
+    return "Subtitulado";
+  return "";
 }
 
 /**
- * Idioma por servidor: primero el data-name ("Español Latino" → Latino),
- * y si no hay nombre, la etiqueta <title> de la ficha ("... Online Latino HD").
- * Solo como ultimo recurso se mira todo el HTML.
+ * Por servidor: data-name / tab ("Español Latino" -> Latino). Si el servidor no
+ * trae idioma, la etiqueta <title> de la ficha ("... Capitulo 1 Online Latino HD").
+ * Si tampoco hay pista, Latino (mismo default que el Dart). NO se escanea todo el
+ * HTML: el boilerplate ("...en español sin coste...") etiquetaba todo mal.
  */
 function detectLanguage(name, html) {
-  var n = String(name || "").toLowerCase();
-  if (n && /\blat\b|latino/.test(n)) return "Latino";
-  if (n.indexOf("castellano") >= 0 || n.indexOf("español") >= 0 || n.indexOf("espanol") >= 0)
-    return "Español";
-  if (n.indexOf("sub") >= 0) return "Subtitulado";
-  if (n.indexOf("ingl") >= 0) return "Subtitulado";
+  var n = idomaLabel(name);
+  if (n) return n;
 
   var t = String(html || "").match(/<title>([\s\S]*?)<\/title>/i);
-  var cabeza = t ? t[1].toLowerCase() : "";
-  if (/\blat\b|latino/.test(cabeza)) return "Latino";
-  if (cabeza.indexOf("castellano") >= 0 || cabeza.indexOf("español") >= 0) return "Español";
-  if (cabeza.indexOf("subtitulad") >= 0) return "Subtitulado";
+  var cab = t ? idomaLabel(t[1]) : "";
+  if (cab) return cab;
 
-  var todo = String(html || "").toLowerCase();
-  if (/\blat\b|latino/.test(todo)) return "Latino";
-  if (todo.indexOf("castellano") >= 0 || todo.indexOf("español") >= 0) return "Español";
   return "Latino";
 }
 
@@ -456,74 +475,74 @@ function detectLanguage(name, html) {
 // getStreams
 // ─────────────────────────────────────────────────────────
 
+function urlCapitulo(base, season, episode) {
+  return (
+    base.replace(/\/+$/, "") + "/temporada/" + (season || 1) + "/capitulo/" + (episode || 1)
+  );
+}
+
 async function getStreams(tmdbId, mediaType, season, episode) {
   try {
     var id = parseInt(tmdbId, 10);
     if (!id || id <= 0) return [];
     var esPelicula = mediaType !== "tv";
-    var tipo = esPelicula ? "movie" : "tv";
 
-    var titles = await getTmdbTitles(id, tipo);
-    if (!titles.length) return [];
+    var titulos = await getTmdbTitulos(id, esPelicula ? "movie" : "tv");
+    if (!titulos.length) return [];
 
-    var page = await findPageUrl(titles, tipo);
-    if (!page) return [];
+    var fichas = await buscarFichas(titulos, esPelicula ? "movie" : "tv");
+    if (!fichas.length) return [];
 
-    var pageUrl = absolutizar(page.base, page.href);
-    if (!esPelicula) {
-      pageUrl =
-        pageUrl.replace(/\/+$/, "") +
-        "/temporada/" + (season || 1) + "/capitulo/" + (episode || 1);
-    }
+    for (var c = 0; c < fichas.length; c++) {
+      var ficha = fichas[c];
+      var pageUrl = esPelicula ? ficha.url : urlCapitulo(ficha.url, season, episode);
+      var html = await fetchText(pageUrl, ficha.base + "/");
 
-    var html = await fetchText(pageUrl, page.base + "/");
-
-    // Fallback: rutas directas por id TMDB (raras veces existen en el sitio).
-    if (!html || !/data-url=|url="https?:/i.test(html)) {
-      var alternas = [page.base + "/pelicula/" + id, page.base + "/serie/" + id];
-      for (var a = 0; a < alternas.length; a++) {
-        var alt = await fetchText(alternas[a], page.base + "/");
-        if (alt && /data-url="https?:|url="https?:/i.test(alt)) {
-          html = alt;
-          pageUrl = alternas[a];
-          break;
+      // Ficha inexistente / sin player: probar las rutas directas por id TMDB.
+      if (!html || !/data-url="https?:|url="https?:|var video\s*=|var options\s*=/i.test(html)) {
+        var alt = esPelicula
+          ? ficha.base + "/pelicula/" + id
+          : urlCapitulo(ficha.base + "/serie/" + id, season, episode);
+        var html2 = await fetchText(alt, ficha.base + "/");
+        if (html2 && /data-url="https?:|url="https?:|var video\s*=|var options\s*=/i.test(html2)) {
+          html = html2;
+          pageUrl = alt;
         }
       }
-    }
-    if (!html) return [];
+      if (!html) continue;
 
-    var raw = extractServers(html);
-    if (!raw.length) return [];
+      var raw = extractServers(html);
+      if (!raw.length) continue;
 
-    var orden = { Latino: 0, "Español": 1, Subtitulado: 2 };
-    raw.sort(function (x, y) {
-      var ix = orden[idiomaDe(x.language)];
-      var iy = orden[idiomaDe(y.language)];
-      return (ix == null ? 9 : ix) - (iy == null ? 9 : iy);
-    });
-
-    var usados = {};
-    var streams = [];
-    for (var i = 0; i < raw.length; i++) {
-      var s = raw[i];
-      var idioma = idiomaDe(s.language);
-      var nombre = String(s.name || "").trim() || hostLabel(s.url);
-      var etiqueta = idioma + " · " + nombre;
-      if (usados[etiqueta]) {
-        usados[etiqueta]++;
-        etiqueta = etiqueta + " " + usados[etiqueta];
-      } else {
-        usados[etiqueta] = 1;
-      }
-      streams.push({
-        title: etiqueta,
-        quality: "HD",
-        language: idioma,
-        url: s.url,
-        headers: { Referer: pageUrl, "User-Agent": UA },
+      var orden = { Latino: 0, "Español": 1, Subtitulado: 2 };
+      raw.sort(function (x, y) {
+        return (orden[x.language] || 0) - (orden[y.language] || 0);
       });
+
+      var usados = {};
+      var streams = [];
+      for (var i = 0; i < raw.length; i++) {
+        var s = raw[i];
+        var idioma = idomaLabel(s.language) || "Latino";
+        var nombre = String(s.name || "").trim() || hostLabel(s.url);
+        var etiqueta = idioma + " · " + nombre;
+        if (usados[etiqueta]) {
+          usados[etiqueta]++;
+          etiqueta = etiqueta + " " + usados[etiqueta];
+        } else {
+          usados[etiqueta] = 1;
+        }
+        streams.push({
+          title: etiqueta,
+          quality: "HD",
+          language: idioma,
+          url: s.url,
+          headers: { Referer: pageUrl, "User-Agent": UA },
+        });
+      }
+      return streams;
     }
-    return streams;
+    return [];
   } catch (e) {
     return [];
   }

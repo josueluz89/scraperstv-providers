@@ -347,6 +347,25 @@
       "contentLanguage": [
         "es"
       ]
+    },
+    {
+      "id": "embed69",
+      "name": "Embed69",
+      "description": "Embed69: HLS directo verificado (200 + #EXTM3U) de sus embeds, con Referer/Origin.",
+      "version": "1.0.0",
+      "author": "MasterScrap",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/embed69.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "es"
+      ]
     }
   ]
 }
