@@ -214,7 +214,7 @@
     {
       "id": "cinesrc",
       "name": "CineSRC",
-      "description": "Verificado 2026-09-23: Dune2 1, Breaking Bad S1E1 1.",
+      "description": "Embed oficial del sitio (cinesrc.st/embed/{movie|tv}/{tmdbId}); emite 1 stream = el embed, que elige servidor adentro. Verificado 2026-09-23 en Node y QuickJS: Dune2 1, The Boys S3E1 1. El m3u8 NO se puede resolver en el provider: el embed va detrás de una barrera proof-of-work resuelta con WebAssembly (/pow-worker-v3.js + /pow-v3.wasm) y QuickJS no tiene WASM ni Workers. Necesita reproductor WebView con WASM.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [

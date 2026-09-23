@@ -1,35 +1,62 @@
-// CineSRC — puerto a JS de lib/data/extractors/providers/cinesrc_extractor.dart
-// (el CineSrcService Dart del repo del proyecto) al formato que ejecuta el motor
-// de MasterScrap: CommonJS `module.exports = { getStreams }`.
+// CineSRC — embedding oficial del sitio (cinesrc.st). Verificado 2026-09-23.
 //
-// El original NO scrapea: solo construye la URL del embed con el ID de TMDb y
-// emite UN servidor. El comentario del Dart es explícito: «MainFuentes se encarga
-// del resto (extractor, verificación, etc.)» y avisa de que NO hay que duplicar
-// entradas tipo «VideoApp»/«VidSrc» apuntando a la misma URL.
+// QUÉ ES: CineSrc es una "Free Video Streaming API" (Next.js) que expone
+//    movie : https://cinesrc.st/embed/movie/<tmdbId>
+//    tv    : https://cinesrc.st/embed/tv/<tmdbId>?s=<S>&e=<E>
+// Documentación: https://cinesrc.st/docs (parámetros abajo). El sitio NO publica
+// una lista de servidores ni un .m3u8: el reproductor del embed elige el servidor
+// adentro, así que este provider emite UN stream que ES el embed.
 //
-//   movie: https://cinesrc.st/embed/movie/<tmdbId>?color=%2300ff66&autoplay=true&...
-//   tv   : https://cinesrc.st/embed/tv/<tmdbId>?s=<S>&e=<E>&color=%2300ff66&...
+// POR QUÉ NO SE RESUELVE EL m3u8 AQUÍ (no perder tiempo reintentándolo):
+// el embed está detrás de una barrera proof-of-work. El flujo real es
+//   1) POST /api/c/bootstrap   header x-cs-q = base64url(JSON [tipo,id,S,E]) -> {r, p}
+//   2) GET  /api/c/issue       headers x-cs-r, x-cs-q, x-cs-p -> reto {w:"CSP3…", t, n, s}
+//   3) GET  /api/c/stage2/issue headers x-cs-r, x-cs-q -> segundo reto {pack:[hash,52,…]}
+// y el reto lo resuelve el propio embed con WebAssembly (/pow-worker-v3.js +
+// /pow-v3.wasm, 11 KB) más un script ofuscado (/300726c-prod.js, 150 KB). El
+// runtime de los providers (QuickJS) no tiene WebAssembly, ni Workers, ni
+// crypto.subtle, así que el reto no se puede resolver dentro del provider. Los
+// endpoints que devolverían el medio (/api/c/media, /resolve, /pack, /stream,
+// /sources, /video…) no existen: dan 404. Conclusión: esto solo funciona si el
+// reproductor de la app abre el embed en un WebView con WASM.
 //
-// Único añadido respecto al Dart: se comprueba que el embed responda. Si el
-// servidor devuelve un error definitivo (404/410/5xx) se devuelve [] en vez de un
-// enlace muerto; si es un fallo de red/timeout se mantiene el enlace (puede ser
-// bloqueo del host, no que el sitio esté caído).
+// CAMBIOS respecto al Dart original: se usan los parámetros documentados en
+// /docs (autoskip y seek no estaban) y se deja constancia de lo de arriba.
+//
+// Nota sobre la comprobación: el shell del embed responde 200 incluso con un
+// TMDB id inventado (probado con /embed/movie/1 y /embed/movie/abc), así que
+// esto detecta caídas reales del sitio (404/410/5xx, DNS) pero no contenido
+// inexistente. Si falla la red NO se descarta el enlace (puede ser bloqueo al
+// host que consulta, no al usuario que reproduce).
 const BASE = 'https://cinesrc.st';
 const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const FETCH_TIMEOUT = 12000;
+
+// Parámetros documentados en https://cinesrc.st/docs
+//   seek (1-99, def 10) · autoplay (def true) · muted (def false) · controls (def true)
+//   back ("close" = postMessage al padre) · autonext (def true) · autoskip (def false)
+//   prioritize (def false) · lastserver · t/time · continueprompt · quality · color
+const PARAMS = [
+  'color=%2300ff66',
+  'autoplay=true',
+  'autonext=true',
+  'autoskip=true',
+  'seek=15',
+  'controls=true',
+  'back=close',
+  'prioritize=true',
+].join('&');
 
 function buildEmbedUrl(tmdbId, isMovie, season, episode) {
   var base = isMovie
     ? BASE + '/embed/movie/' + tmdbId
     : BASE + '/embed/tv/' + tmdbId + '?s=' + season + '&e=' + episode;
   var sep = base.indexOf('?') >= 0 ? '&' : '?';
-  return (
-    base + sep + 'color=%2300ff66&autoplay=true&autonext=true&back=close&prioritize=true'
-  );
+  return base + sep + PARAMS;
 }
 
-/** true = el embed vive; false = error definitivo del servidor. */
+/** true = el embed responde; false = error definitivo del servidor. */
 function embedVive(url) {
   var opts = {
     headers: {
@@ -89,9 +116,9 @@ function getStreams(tmdbId, mediaType, season, episode) {
       if (!vive) return [];
       return [
         {
-          title: 'CineSRC',
+          title: isMovie ? 'CineSRC · Película' : 'CineSRC · ' + s + 'x' + e,
           quality: 'HD',
-          language: 'Latino',
+          language: 'Multi',
           url: url,
           headers: { Referer: BASE + '/', 'User-Agent': UA },
         },

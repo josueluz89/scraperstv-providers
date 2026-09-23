@@ -47,7 +47,7 @@ module.exports = { getStreams };
 | poseidon | `providers/poseidon.js` | activo | Dune2 8 embeds, GoT S1E1 3 |
 | tioplus | `providers/tioplus.js` | activo | Dune2 4, Breaking Bad S1E1 9 |
 | vidsrc | `providers/vidsrc.js` | activo | Dune2 2, Breaking Bad S1E1 2 (EN) |
-| cinesrc | `providers/cinesrc.js` | activo | Dune2 1, Breaking Bad S1E1 1 |
+| cinesrc | `providers/cinesrc.js` | activo (solo embed) | Dune2 1, The Boys S3E1 1 — emite el embed oficial con los parámetros de `/docs`; el m3u8 no se puede resolver (barrera proof-of-work con WASM, fuera del alcance de QuickJS) |
 | pelisplus | `providers/pelisplus.js` | activo | Dune2 1, GoT S1E1 1 |
 | pelispedia | `providers/pelispedia.js` | activo | Dune2 3 (fastream m3u8), Breaking Bad S1E1 2 |
 | seriesmetro | `providers/seriesmetro.js` | activo | Dune2 3, Breaking Bad S1E1 2 |
