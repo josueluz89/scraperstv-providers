@@ -1,0 +1,131 @@
+{
+  "name": "Masters Repo",
+  "version": "1.8.0",
+  "scrapers": [
+    {
+      "id": "masters",
+      "name": "Masters (GnulaHD)",
+      "description": "Scraper de GnulaHD que proporciona enlaces de películas y series en Latino, Castellano y Subtitulado.",
+      "version": "1.8.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/masters.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=gnulahd.nu&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "pelisplusto",
+      "name": "Pelisplusto",
+      "description": "Películas en latino desde PelisPlusHD (vía uqlink + hosts directos).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pelisplusto.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=pelisplushd.bz&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "fanpelis",
+      "name": "Fanpelis",
+      "description": "Películas y series en latino vía API de Fanpelis (VOE, StreamWish, FileMoon).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/fanpelis.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=fanpelis.to&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "cinecalidad",
+      "name": "CineCalidad",
+      "description": "Películas y series en latino desde CineCalidad (VOE, StreamWish, FileMoon).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinecalidad.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=cinecalidad.ec&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "cuevana",
+      "name": "Cuevana",
+      "description": "Películas y series en latino vía API de Cuevana.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cuevana.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=cuevana.gs&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "lacartoons",
+      "name": "LaCartoons",
+      "description": "Series animadas y caricaturas clasicas en latino desde lacartoons.com (Cartoon Network, Nickelodeon, Disney...) via cubeembed/rpmvid.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "tv"
+      ],
+      "filename": "providers/lacartoons.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=lacartoons.com&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    }
+  ]
+}
