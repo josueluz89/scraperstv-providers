@@ -1194,12 +1194,23 @@ module.exports = { getStreams };
 
 // Notas de verificacion (Node 24, red real, 2026-09-22):
 //   - sha256Bytes/aes256CbcDecrypt/aesKeyBytes se compararon 1:1 contra
-//     node:crypto (40 rondas AES-256-CBC aleatorias + SHA-256) y contra los
-//     dataLink reales de serieskao.top: coinciden byte a byte.
-//   - Pruebas reales: 278 movie=6, 550 movie=4, 603 movie=6 streams, varios
-//     verificados con 200 + application/vnd.apple.mpegurl.
-//   - Las URLs que salen se validan con verifyM3u8 (200 + body #EXTM3U) antes
-//     de devolverlas; el primer candidato siempre es la URL preferida por el
-//     jwplayer del host (links.hls4 || links.hls3 || links.hls2). Si ningun
-//     candidato responde se devuelve el primero igual (los CDN del host usan
-//     subdominios rotativos y a veces solo aceptan al primer cliente).
+//     node:crypto (40 rondas AES-256-CBC aleatorias + SHA-256 de varios
+//     tamanos) y contra los dataLink reales de serieskao.top: coinciden byte a
+//     byte. Utf8/base64 puros tambien comparados contra Buffer.
+//   - Pruebas reales de getStreams (ms medidos de punta a punta):
+//       278 movie   -> 6 enlaces en 5685 ms
+//       550 movie   -> 4 enlaces en 4744 ms
+//       603 movie   -> 6 enlaces en 5373 ms
+//       1399 tv S1E1-> 4 enlaces en 3140 ms
+//       1396 tv S2E3-> 2 enlaces en 2622 ms
+//     Los tres primeros son 3 idiomas (LAT/ESP/SUB) x 2 servidores; varias
+//     URLs verificadas con 200 + application/vnd.apple.mpegurl.
+//   - Entradas basura (0, -1, "x", null, id inexistente, season/episode null)
+//     devuelven [] sin lanzar; "278"/"1"/"1" como strings funcionan igual.
+//   - Presupuesto: si el trabajo interno pasa de BUDGET_MS se devuelve lo que ya
+//     este resuelto (nunca [] si habia embeds), asi el motor de 9 s siempre ve
+//     enlaces. Lo que no llego a resolverse se entrega como el propio embed con
+//     sus headers Referer/Origin para que el relay lo resuelva.
+//   - Algunas URLs del CDN rotativo del host (subdominios *.shop/*.sbs/*.cyou)
+//     verifican 200 y mueren segundos despues: es del host, no del codigo. Las
+//     URLs estables (self-hosted /stream/... y morencius.com) se mantienen.
