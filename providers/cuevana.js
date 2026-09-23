@@ -1,6 +1,6 @@
 /**
  * cuevana - Built from src/cuevana/
- * Generated: 2026-09-12T03:36:18.432Z
+ * Generated: 2026-09-23T17:03:40.303Z
  */
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -87,11 +87,6 @@ function fetchText(url, options, timeout) {
     if (!res.ok)
       throw new Error("HTTP " + res.status + " for " + url);
     return res.text();
-  });
-}
-function fetchJson(url, options, timeout) {
-  return fetchText(url, options, timeout).then(function(raw) {
-    return JSON.parse(raw);
   });
 }
 function fetchWithRetry(url, options, retries, timeout) {
@@ -386,17 +381,32 @@ function mapDomain(url) {
 function resolveHLSWishStream(embedUrl) {
   return __async(this, null, function* () {
     try {
-      const targetUrl = mapDomain(embedUrl).replace("/e/", "/v/");
-      const origin = getUrlOrigin(targetUrl);
-      const html = yield fetchWithRetry(targetUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          Referer: "https://embed69.org/",
-          Origin: "https://embed69.org",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "es-MX,es;q=0.9"
+      const base = mapDomain(embedUrl);
+      const origin0 = getUrlOrigin(base);
+      const headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Referer: "https://embed69.org/",
+        Origin: "https://embed69.org",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-MX,es;q=0.9"
+      };
+      const candidates = [base];
+      const vVariant = base.replace("/e/", "/v/");
+      if (vVariant !== base)
+        candidates.push(vVariant);
+      let html = null;
+      let origin = origin0;
+      for (const u of candidates) {
+        try {
+          html = yield fetchWithRetry(u, { headers }, 1);
+          origin = getUrlOrigin(u);
+          break;
+        } catch (e) {
+          html = null;
         }
-      });
+      }
+      if (!html)
+        return null;
       const fileMatch = html.match(/file\s*:\s*["']([^"']+)["']/i);
       if (fileMatch) {
         let fileUrl = fileMatch[1];
@@ -786,7 +796,7 @@ function getEmbedResolver(url) {
   if (url.includes("voe.sx") || url.includes("cloudwindow-route.com")) {
     return resolveVoeStream;
   }
-  if (url.includes("hlswish") || url.includes("streamwish") || url.includes("vibuxer") || url.includes("strwish") || url.includes("hglink") || url.includes("ghbrisk") || url.includes("premilkyway")) {
+  if (url.includes("hlswish") || url.includes("streamwish") || url.includes("vibuxer") || url.includes("strwish") || url.includes("hglink") || url.includes("ghbrisk") || url.includes("premilkyway") || url.includes("hgplaycdn")) {
     return resolveHLSWishStream;
   }
   if (url.includes("vidhide") || url.includes("dintezuvio") || url.includes("minochinos") || url.includes("dramiyos") || url.includes("dhcplay") || url.includes("smoothpre") || url.includes("dhtpre") || url.includes("vidspeeder") || url.includes("moorearn") || url.includes("travid") || url.includes("vidhidehub") || url.includes("vidhidevip") || url.includes("vidhidepre") || url.includes("kinoger") || url.includes("movearnpre") || url.includes("peytonepre") || url.includes("filelions")) {
@@ -820,227 +830,277 @@ function getEmbedResolver(url) {
 }
 
 // src/cuevana/extractor.js
-var TMDB_API_KEY = "1f54bd990f1cdfb230adb312546d765d";
-var API_FALLBACKS = ["https://cuevana.gs/wp-api/v1/", "https://cuevana8.com/wp-api/v1/", "https://cuevana3.eu/wp-api/v1/"];
-var ACCENT_MAP = { "\xE1": "a", "\xE9": "e", "\xED": "i", "\xF3": "o", "\xFA": "u", "\xFC": "u", "\xF1": "n", "\xC1": "a", "\xC9": "a", "\xCD": "i", "\xD3": "o", "\xDA": "u", "\xDC": "u", "\xD1": "n", "\xE0": "a", "\xE8": "e", "\xEC": "i", "\xF2": "o", "\xF9": "u", "\xE2": "a", "\xEA": "e", "\xEE": "i", "\xF4": "o", "\xFB": "u", "\xE4": "a", "\xEB": "e", "\xEF": "i", "\xF6": "o", "\xE7": "c", "\xE3": "a", "\xF5": "o" };
+var TMDB_KEY = "1f54bd990f1cdfb230adb312546d765d";
+var TMDB_BASE = "https://api.themoviedb.org/3";
+var BASE = "https://wv3.cuevana3.eu";
+var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+var ACCENT_MAP = { "\xE1": "a", "\xE0": "a", "\xE4": "a", "\xE2": "a", "\xE3": "a", "\xE9": "e", "\xE8": "e", "\xEB": "e", "\xEA": "e", "\xED": "i", "\xEC": "i", "\xEF": "i", "\xEE": "i", "\xF3": "o", "\xF2": "o", "\xF6": "o", "\xF4": "o", "\xF5": "o", "\xFA": "u", "\xF9": "u", "\xFC": "u", "\xFB": "u", "\xF1": "n", "\xE7": "c" };
 function stripAccents(s) {
   return (s || "").replace(/[^\x00-\x7F]/g, function(c) {
     return ACCENT_MAP[c] || "";
   });
 }
-function normalizeText(text) {
-  if (!text)
-    return "";
-  return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+function slugify(t) {
+  var s = stripAccents((t || "").trim().toLowerCase());
+  s = s.replace(/[^a-z0-9\s-]/g, "");
+  s = s.replace(/[\s-]+/g, "-");
+  return s.replace(/^-+|-+$/g, "");
 }
-function decodeEntities(s) {
-  return (s || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+function toTmdbType(t) {
+  return t === "tv" || t === "series" || t === "anime" ? "tv" : "movie";
 }
-function stripYear(title) {
-  return (title || "").replace(/\s*\(\d{4}\)\s*/g, " ").replace(/\s+/g, " ").trim();
+function langToCode(l) {
+  var s = (l || "").toLowerCase();
+  if (s.indexOf("castellano") !== -1 || s.indexOf("espa") !== -1)
+    return "es_ES";
+  if (s.indexOf("ingl") !== -1 || s.indexOf("english") !== -1 || s.indexOf("sub") !== -1)
+    return "en_US";
+  return "es_MX";
 }
-var STOPWORDS = { y: 1, de: 1, la: 1, el: 1, los: 1, las: 1, un: 1, una: 1, del: 1, al: 1, e: 1, u: 1, o: 1, en: 1, con: 1, por: 1, para: 1, the: 1, a: 1, an: 1, of: 1, and: 1, to: 1, in: 1, on: 1, vs: 1 };
-function searchWords(media) {
-  var all = normalizeText((media.originalTitle || "") + " " + (media.title || ""));
-  var words = all.replace(/[^a-z0-9]/g, " ").split(" ").filter(Boolean);
-  var unique = {}, out = [];
-  for (var i = 0; i < words.length; i++) {
-    var w = words[i];
-    if (w.length < 3 || STOPWORDS[w] || unique[w])
-      continue;
-    unique[w] = true;
-    out.push(w);
-  }
-  out.sort(function(a, b) {
-    return b.length - a.length;
-  });
-  return out.slice(0, 3);
-}
-function getMediaTitle(tmdbId, tmdbType) {
-  var url = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY + "&language=es-MX";
-  return fetchJson(url).then(function(data) {
-    var isMovie = tmdbType === "movie";
-    var date = isMovie ? data.release_date : data.first_air_date;
-    return {
-      title: isMovie ? data.title : data.name,
-      originalTitle: isMovie ? data.original_title : data.original_name,
-      year: date && date.length >= 4 ? date.slice(0, 4) : null
-    };
-  });
-}
-function tryApi(path, idx) {
-  if (idx === void 0)
-    idx = 0;
-  if (idx >= API_FALLBACKS.length)
-    return Promise.reject(new Error("Cuevana API error - all domains failed"));
-  return fetchJson(API_FALLBACKS[idx] + path).then(function(res) {
-    if (!res || res.error)
-      throw new Error("Cuevana API error");
-    return res.data;
-  }).catch(function(e) {
-    if (idx + 1 < API_FALLBACKS.length)
-      return tryApi(path, idx + 1);
-    throw e;
-  });
-}
-function api(path) {
-  return tryApi(path, 0);
-}
-function pickPost(posts, media, wantTv, ignoreYear) {
-  var no = normalizeText(media.originalTitle || "");
-  var nt = normalizeText(media.title || "");
-  var best = null, bestScore = -1;
-  var allNorm = (no + " " + nt).trim();
-  var qWords = allNorm ? allNorm.split(" ").filter(Boolean) : [];
-  for (var i = 0; i < posts.length; i++) {
-    var p = posts[i];
-    var isTv = p.type === "tvshows" || p.type === "series" || p.type === "animes";
-    if (wantTv !== isTv)
-      continue;
-    var pt = normalizeText(stripYear(decodeEntities(p.title || "")));
-    var score = 0;
-    if (pt === no || pt === nt)
-      score = 100;
-    else if (no && (pt.indexOf(no) !== -1 || no.indexOf(pt) !== -1) || nt && (pt.indexOf(nt) !== -1 || nt.indexOf(pt) !== -1))
-      score = 80;
-    if (score === 0) {
-      var ptWords = pt.split(" ").filter(Boolean);
-      var qMatch = 0, cMatch = 0;
-      for (var qi = 0; qi < qWords.length; qi++)
-        if (pt.indexOf(qWords[qi]) !== -1)
-          qMatch++;
-      for (var ci = 0; ci < ptWords.length; ci++)
-        for (var qj = 0; qj < qWords.length; qj++)
-          if (qWords[qj] === ptWords[ci]) {
-            cMatch++;
-            break;
-          }
-      score = qMatch * 8 + cMatch * 5;
-      if (score < 10)
-        continue;
-    }
-    if (!ignoreYear) {
-      if (media.year && (p.title || "").indexOf(media.year) !== -1)
-        score += 5;
-      else if (media.year && p.release_date && p.release_date.indexOf(media.year) === 0)
-        score += 5;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = p;
-    }
-  }
-  return best;
-}
-function unwrapPlayer(embedUrl) {
-  if (!embedUrl || embedUrl.indexOf("player.php") === -1)
-    return Promise.resolve(embedUrl);
-  return fetchText(embedUrl, { headers: { Referer: "https://cuevana.gs/" } }).then(function(html) {
-    var m = html.match(/<iframe\b[^>]*src="([^"]+)"[^>]*>/i);
+function mapPlayerDomain(url) {
+  try {
+    var m = url.match(/^(https?:\/\/)([^\/]+)(.*)$/);
     if (!m)
-      return embedUrl;
-    var src = m[1];
-    if (src.indexOf("//") === 0)
-      src = "https:" + src;
-    return src.indexOf("http") === 0 ? src : embedUrl;
-  }).catch(function() {
-    return embedUrl;
-  });
+      return url;
+    var host = m[2].toLowerCase();
+    var nh = null;
+    if (host.indexOf("streamwish.to") !== -1)
+      nh = host.replace("streamwish.to", "hgplaycdn.com");
+    else if (host.indexOf("vidhidepro.com") !== -1)
+      nh = host.replace("vidhidepro.com", "callistanise.com");
+    else if (host.indexOf("filelions.to") !== -1)
+      nh = host.replace("filelions.to", "callistanise.com");
+    if (!nh)
+      return url;
+    return m[1] + nh + m[3];
+  } catch (e) {
+    return url;
+  }
 }
-function resolveEmbeds(embeds) {
-  var streams = [];
-  var jobs = (embeds || []).map(function(e) {
-    var url = e.url || "";
-    if (!url || url.indexOf("magnet:") === 0)
-      return Promise.resolve();
-    return unwrapPlayer(url).then(function(target) {
-      if (!target)
+function isAllowed(name) {
+  var n = (name || "").toLowerCase();
+  return n.indexOf("streamwish") !== -1 || n.indexOf("vidhide") !== -1 || n.indexOf("filelions") !== -1 || n.indexOf("vidhidepro") !== -1 || n.indexOf("voe") !== -1 || n.indexOf("uqload") !== -1 || n.indexOf("dood") !== -1 || n.indexOf("filemoon") !== -1 || n.indexOf("lulu") !== -1;
+}
+function fetchTmdb(tmdbId, type) {
+  function lang(l) {
+    return fetchText(TMDB_BASE + "/" + type + "/" + tmdbId + "?api_key=" + TMDB_KEY + "&language=" + l, { headers: { Accept: "application/json", "User-Agent": UA } }).then(function(raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
         return null;
-      if (target !== url && target.indexOf("cuevana") !== -1)
-        return null;
-      var fixed = mapDomain(target);
-      var resolver = getEmbedResolver(fixed);
-      if (!resolver)
-        return null;
-      var lang = e.lang || "LAT";
-      return resolver(fixed).then(function(r) {
-        if (r && r.url) {
-          var host = "";
-          try {
-            host = fixed.split("/")[2];
-          } catch (err) {
-          }
-          streams.push({
-            name: "Cuevana (" + lang + ")",
-            title: (r.quality || e.quality || "HD") + " \xB7 " + lang + " \xB7 " + host,
-            url: r.url,
-            quality: r.quality || e.quality || "HD",
-            headers: r.headers
-          });
-        }
-      }).catch(function() {
+      }
+    }).catch(function() {
+      return null;
+    });
+  }
+  return lang("es-MX").then(function(es) {
+    return lang("es-ES").then(function(eses) {
+      return lang("en-US").then(function(en) {
+        var latino = es && (es.title || es.name) || "";
+        var cast = eses && (eses.title || eses.name) || "";
+        var ingles = en && (en.title || en.name) || "";
+        var dateStr = type === "movie" ? es && es.release_date || en && en.release_date || "" : es && es.first_air_date || en && en.first_air_date || "";
+        var year = dateStr && dateStr.length >= 4 ? dateStr.substring(0, 4) : null;
+        return { latino, castellano: cast, ingles, year };
       });
     });
   });
-  return Promise.all(jobs).then(function() {
-    return streams;
+}
+function fetchPage(url) {
+  return fetchText(url, { headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "es-ES,es;q=0.9,en;q=0.8" } }).catch(function() {
+    return null;
   });
 }
-function movieStreams(postId) {
-  return api("player?postId=" + postId + "&demo=0").then(function(data) {
-    return resolveEmbeds(data.embeds);
-  }).catch(function() {
-    return [];
-  });
+function extractNextData(html) {
+  var m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m)
+    return null;
+  try {
+    var data = JSON.parse(m[1]);
+    if (data && data.props && data.props.pageProps)
+      return data.props.pageProps;
+  } catch (e) {
+  }
+  return null;
 }
-function episodeStreams(showId, season, episode) {
-  return api("single/episodes/list?_id=" + showId + "&season=" + season + "&page=1&postsPerPage=100").then(function(data) {
-    var posts = data && data.posts || [];
-    for (var i = 0; i < posts.length; i++) {
-      if (posts[i].season_number === season && posts[i].episode_number === episode) {
-        return api("player?postId=" + posts[i]._id + "&demo=0").then(function(d) {
-          return resolveEmbeds(d.embeds);
-        });
-      }
+function groupsFromVideos(videos) {
+  var langMap = { latino: "Latino", spanish: "Castellano", english: "English", japanese: "Japones" };
+  var out = [];
+  for (var k in langMap) {
+    if (!videos.hasOwnProperty(k))
+      continue;
+    var list = videos[k];
+    if (!Array.isArray(list) || !list.length)
+      continue;
+    var vids = [];
+    for (var i = 0; i < list.length; i++) {
+      var v = list[i];
+      if (!v || !v.result)
+        continue;
+      vids.push({ cyberlocker: v.cyberlocker || "", url: v.result, quality: v.quality || "HD" });
     }
-    return [];
+    if (vids.length)
+      out.push({ language: langMap[k], videos: vids });
+  }
+  return out;
+}
+function resolvePlayer(sourceUrl) {
+  return fetchPage(sourceUrl).then(function(html) {
+    if (!html)
+      return null;
+    var m = html.match(/var url = '([^']+)'/) || html.match(/var url = "([^"]+)"/);
+    var videoUrl = m ? m[1] : null;
+    if (!videoUrl) {
+      var m3 = html.match(/(?:file|src|source)\s*[:=]\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
+      if (m3)
+        videoUrl = m3[1];
+    }
+    if (!videoUrl) {
+      var ifr = html.match(/<iframe[^>]+src="([^"]+)"/i);
+      if (ifr)
+        videoUrl = ifr[1];
+    }
+    if (!videoUrl)
+      return null;
+    return mapPlayerDomain(videoUrl);
   }).catch(function() {
-    return [];
+    return null;
   });
+}
+function buildMovieCandidates(tmdb) {
+  var prefix = BASE + "/ver-pelicula/";
+  var titles = [tmdb.latino, tmdb.castellano, tmdb.ingles];
+  var out = [];
+  for (var i = 0; i < titles.length; i++) {
+    var slug = slugify(titles[i]);
+    if (!slug)
+      continue;
+    out.push(prefix + slug);
+    if (tmdb.year)
+      out.push(prefix + slug + "-" + tmdb.year);
+  }
+  return out.filter(function(v, i2, a) {
+    return a.indexOf(v) === i2;
+  });
+}
+function buildEpisodeCandidates(tmdb, season, episode) {
+  var names = [tmdb.latino, tmdb.castellano, tmdb.ingles].filter(function(x) {
+    return x && x.trim();
+  });
+  var out = [];
+  for (var i = 0; i < names.length; i++) {
+    var slug = slugify(names[i]);
+    if (!slug)
+      continue;
+    out.push(BASE + "/episodio/" + slug + "-temporada-" + season + "-episodio-" + episode);
+  }
+  return out;
 }
 function extractStreams(tmdbId, mediaType, season, episode) {
-  var tmdbType = mediaType === "tv" || mediaType === "series" || mediaType === "anime" ? "tv" : "movie";
-  var wantTv = tmdbType === "tv";
-  return getMediaTitle(tmdbId, tmdbType).then(function(media) {
-    var words = searchWords(media);
-    if (!words.length)
+  var tmdbType = toTmdbType(mediaType);
+  var isMovie = tmdbType !== "tv";
+  var s = parseInt(season, 10) || 1;
+  var e = parseInt(episode, 10) || 1;
+  return fetchTmdb(tmdbId, tmdbType).then(function(tmdb) {
+    tmdb.id = tmdbId;
+    if (!tmdb.latino && !tmdb.ingles && !tmdb.castellano)
       return [];
-    var posts = [];
-    var seen = {};
-    var chain = Promise.resolve();
-    words.forEach(function(w) {
-      chain = chain.then(function() {
-        return api("search?q=" + encodeURIComponent(w) + "&page=1&postType=any&postsPerPage=16").then(function(data) {
-          var list = data && data.posts || [];
-          for (var i = 0; i < list.length; i++) {
-            if (!seen[list[i]._id]) {
-              seen[list[i]._id] = true;
-              posts.push(list[i]);
+    var candidates = isMovie ? buildMovieCandidates(tmdb) : buildEpisodeCandidates(tmdb, s, e);
+    var needle = isMovie ? '"thisMovie"' : '"episode"';
+    function tryNext(i) {
+      if (i >= candidates.length)
+        return searchFallback();
+      return fetchPage(candidates[i]).then(function(html) {
+        if (html && html.indexOf("__NEXT_DATA__") !== -1 && html.indexOf(needle) !== -1) {
+          return { html };
+        }
+        return tryNext(i + 1);
+      });
+    }
+    function searchFallback() {
+      var queries = [tmdb.latino, tmdb.ingles, tmdb.castellano].filter(function(x) {
+        return x && x.trim();
+      }).slice(0, 3);
+      function sq(i) {
+        if (i >= queries.length)
+          return Promise.resolve(null);
+        return fetchPage(BASE + "/search?q=" + encodeURIComponent(queries[i])).then(function(html) {
+          if (!html)
+            return sq(i + 1);
+          var props = extractNextData(html);
+          var list = props && (props.movies || props.series || props.results) || [];
+          if (!Array.isArray(list))
+            list = [];
+          for (var k = 0; k < list.length; k++) {
+            var item = list[k] || {};
+            if ((item.TMDbId || "").toString() === tmdbId.toString()) {
+              var slugName = item.slug && item.slug.name;
+              if (slugName) {
+                var url = isMovie ? BASE + "/ver-pelicula/" + slugName : BASE + "/ver-serie/" + slugName;
+                return fetchPage(url).then(function(h2) {
+                  if (h2 && h2.indexOf("__NEXT_DATA__") !== -1 && h2.indexOf(needle) !== -1)
+                    return { html: h2 };
+                  return sq(i + 1);
+                });
+              }
             }
           }
+          return sq(i + 1);
         }).catch(function() {
+          return sq(i + 1);
+        });
+      }
+      return sq(0);
+    }
+    return tryNext(0).then(function(found) {
+      if (!found)
+        return [];
+      var props = extractNextData(found.html);
+      if (!props)
+        return [];
+      var node = isMovie ? props.thisMovie : props.episode || props.thisEpisode;
+      if (!node || !node.videos)
+        return [];
+      var groups = groupsFromVideos(node.videos);
+      var jobs = [];
+      for (var g = 0; g < groups.length; g++) {
+        for (var v = 0; v < groups[g].videos.length; v++) {
+          (function(gr, vid) {
+            if (!isAllowed(vid.cyberlocker))
+              return;
+            jobs.push(
+              resolvePlayer(vid.url).then(function(resolved) {
+                if (!resolved)
+                  return null;
+                var fixed = mapDomain(resolved);
+                var resolver = getEmbedResolver(fixed);
+                if (!resolver)
+                  return null;
+                return resolver(fixed).then(function(r) {
+                  if (!r || !r.url)
+                    return null;
+                  return {
+                    name: "Cuevana (" + vid.cyberlocker + ")",
+                    title: (r.quality || vid.quality || "HD") + " \xB7 " + langToCode(gr.language) + " \xB7 " + vid.cyberlocker,
+                    url: r.url,
+                    quality: r.quality || vid.quality || "HD",
+                    headers: r.headers
+                  };
+                }).catch(function() {
+                  return null;
+                });
+              })
+            );
+          })(groups[g], groups[g].videos[v]);
+        }
+      }
+      if (!jobs.length)
+        return [];
+      return Promise.all(jobs).then(function(rs) {
+        return rs.filter(function(x) {
+          return x && x.url;
         });
       });
-    });
-    return chain.then(function() {
-      var best = pickPost(posts, media, wantTv, false);
-      if (!best)
-        best = pickPost(posts, media, wantTv, true);
-      if (!best)
-        return [];
-      if (!wantTv)
-        return movieStreams(best._id);
-      return episodeStreams(best._id, parseInt(season, 10) || 1, parseInt(episode, 10) || 1);
     });
   }).catch(function(err) {
     console.error("[Cuevana] Error: " + (err && err.message ? err.message : err));

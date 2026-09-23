@@ -14,6 +14,7 @@ import '../../data/extractors/providers/cinesrc_extractor.dart';
 import '../../data/extractors/providers/pelispedia_extractor.dart';
 import '../../data/extractors/providers/seriesmetro_extractor.dart';
 import '../../data/extractors/providers/smartpelis_extractor.dart';
+import '../../data/extractors/providers/gnula_extractor.dart';
 import '../../data/datasources/remote/sources/custom_api.dart';
 typedef SourceScraper = Stream<Map<String, dynamic>> Function({
   required int tmdbId,
@@ -409,6 +410,35 @@ final List<SourceDefinition> kRegisteredSources = [
         final map = s.toModalMap();
         map['es_smartpelis'] = true;
         return map;
+      });
+    },
+  ),
+  SourceDefinition(
+    id: 'gnula',
+    label: 'GnulaHD',
+    prefsKey: 'gnula_enabled',
+    badgeColor: const Color(0xFF7C3AED),
+    badgeText: 'GNULA',
+    flagKey: 'es_gnula',
+    forceIdioma: 'es_MX',
+    icon: Icons.live_tv_rounded,
+    maxResults: 15,
+    scrape: ({
+      required tmdbId,
+      required isMovie,
+      required season,
+      required episode,
+    }) {
+      return GnulaService.scrape(
+        tmdbId: tmdbId,
+        isMovie: isMovie,
+        season: season,
+        episode: episode,
+      ).map((map) {
+        final m = Map<String, dynamic>.from(map);
+        m['es_gnula'] = true;
+        m['idioma'] ??= 'es_MX';
+        return m;
       });
     },
   ),

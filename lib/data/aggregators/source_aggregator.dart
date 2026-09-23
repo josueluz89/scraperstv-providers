@@ -27,6 +27,7 @@ import '../extractors/providers/fuegocine_extractor.dart';
 import '../extractors/providers/pelispedia_extractor.dart';
 import '../extractors/providers/seriesmetro_extractor.dart';
 import '../extractors/providers/smartpelis_extractor.dart';
+import '../extractors/providers/gnula_extractor.dart';
 import '../datasources/remote/sources/custom_api.dart';
 import '../extractors/hls/hls_extractor.dart';
 // ─────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ enum FuenteId {
   seriesmetro,
   smartpelis,
   cinesrc,
+  gnula,
   customapi, // APIs del usuario (códigos PHP ilimitados)
 }
 

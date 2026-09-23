@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-09-14T19:30:53.682Z
+ * Generated: 2026-09-23T17:03:40.340Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -406,17 +406,32 @@ function mapDomain(url) {
 function resolveHLSWishStream(embedUrl) {
   return __async(this, null, function* () {
     try {
-      const targetUrl = mapDomain(embedUrl).replace("/e/", "/v/");
-      const origin = getUrlOrigin(targetUrl);
-      const html = yield fetchWithRetry(targetUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          Referer: "https://embed69.org/",
-          Origin: "https://embed69.org",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "es-MX,es;q=0.9"
+      const base = mapDomain(embedUrl);
+      const origin0 = getUrlOrigin(base);
+      const headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Referer: "https://embed69.org/",
+        Origin: "https://embed69.org",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-MX,es;q=0.9"
+      };
+      const candidates = [base];
+      const vVariant = base.replace("/e/", "/v/");
+      if (vVariant !== base)
+        candidates.push(vVariant);
+      let html = null;
+      let origin = origin0;
+      for (const u of candidates) {
+        try {
+          html = yield fetchWithRetry(u, { headers }, 1);
+          origin = getUrlOrigin(u);
+          break;
+        } catch (e) {
+          html = null;
         }
-      });
+      }
+      if (!html)
+        return null;
       const fileMatch = html.match(/file\s*:\s*["']([^"']+)["']/i);
       if (fileMatch) {
         let fileUrl = fileMatch[1];
@@ -806,7 +821,7 @@ function getEmbedResolver(url) {
   if (url.includes("voe.sx") || url.includes("cloudwindow-route.com")) {
     return resolveVoeStream;
   }
-  if (url.includes("hlswish") || url.includes("streamwish") || url.includes("vibuxer") || url.includes("strwish") || url.includes("hglink") || url.includes("ghbrisk") || url.includes("premilkyway")) {
+  if (url.includes("hlswish") || url.includes("streamwish") || url.includes("vibuxer") || url.includes("strwish") || url.includes("hglink") || url.includes("ghbrisk") || url.includes("premilkyway") || url.includes("hgplaycdn")) {
     return resolveHLSWishStream;
   }
   if (url.includes("vidhide") || url.includes("dintezuvio") || url.includes("minochinos") || url.includes("dramiyos") || url.includes("dhcplay") || url.includes("smoothpre") || url.includes("dhtpre") || url.includes("vidspeeder") || url.includes("moorearn") || url.includes("travid") || url.includes("vidhidehub") || url.includes("vidhidevip") || url.includes("vidhidepre") || url.includes("kinoger") || url.includes("movearnpre") || url.includes("peytonepre") || url.includes("filelions")) {

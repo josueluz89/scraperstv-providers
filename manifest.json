@@ -5,7 +5,7 @@
     {
       "id": "masters",
       "name": "Masters (GnulaHD)",
-      "description": "Scraper de GnulaHD que proporciona enlaces de películas y series en Latino, Castellano y Subtitulado.",
+      "description": "DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en Latino/Castellano/Subtitulado.",
       "version": "1.8.0",
       "author": "Masters",
       "supportedTypes": [
@@ -13,7 +13,7 @@
         "tv"
       ],
       "filename": "providers/masters.js",
-      "enabled": true,
+      "enabled": false,
       "formats": [
         "mp4",
         "mkv"
@@ -47,7 +47,7 @@
     {
       "id": "fanpelis",
       "name": "Fanpelis",
-      "description": "Películas y series en latino vía API de Fanpelis (VOE, StreamWish, FileMoon).",
+      "description": "DESHABILITADO 2026-09-23: fanpelis.to no responde (timeout). Películas y series en latino vía API de Fanpelis.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -55,7 +55,7 @@
         "tv"
       ],
       "filename": "providers/fanpelis.js",
-      "enabled": true,
+      "enabled": false,
       "formats": [
         "m3u8",
         "mp4"
@@ -68,7 +68,7 @@
     {
       "id": "cinecalidad",
       "name": "CineCalidad",
-      "description": "Películas y series en latino desde CineCalidad (VOE, StreamWish, FileMoon).",
+      "description": "DESHABILITADO 2026-09-23: cinecalidad.ec/.to sin respuesta. Películas y series en latino desde CineCalidad.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -76,7 +76,7 @@
         "tv"
       ],
       "filename": "providers/cinecalidad.js",
-      "enabled": true,
+      "enabled": false,
       "formats": [
         "m3u8",
         "mp4"
@@ -89,7 +89,7 @@
     {
       "id": "cuevana",
       "name": "Cuevana",
-      "description": "Películas y series en latino vía API de Cuevana.",
+      "description": "Películas y series en latino vía wv3.cuevana3.eu (verificado 2026-09-23: Dune2 3 streams).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -110,446 +110,19 @@
     {
       "id": "lacartoons",
       "name": "LaCartoons",
-      "description": "Series animadas y caricaturas clasicas en latino desde lacartoons.com (Cartoon Network, Nickelodeon, Disney...) via cubeembed/rpmvid.",
+      "description": "DESHABILITADO 2026-09-23: lacartoons.com con timeout (0 bytes). Series animadas en latino (Cartoon Network, Nickelodeon, Disney...) via cubeembed/rpmvid.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
         "tv"
       ],
       "filename": "providers/lacartoons.js",
-      "enabled": true,
+      "enabled": false,
       "formats": [
         "m3u8",
         "mp4"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=lacartoons.com&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "unlimplay",
-      "name": "Unlimplay",
-      "description": "Servidores de unlimplay.com (streamwish / vidhide / filelions) en latino, espanol y subtitulado.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/unlimplay.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=unlimplay.com&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "poseidon",
-      "name": "Poseidón",
-      "description": "PoseidonHD: enlaces directos y embeds en latino/castellano.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/poseidon.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "hackstore",
-      "name": "Hackstore",
-      "description": "Hackstore: servidores goodstream y similares.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/hackstore.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "pelisplus",
-      "name": "PelisPlus",
-      "description": "PelisPlusHD con busqueda por tmdb.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/pelisplus.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "tioplus",
-      "name": "TioPlus",
-      "description": "TioPlus: embeds en varios idiomas.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/tioplus.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "cinesrc",
-      "name": "CineSRC",
-      "description": "CineSRC: embed directo por tmdb.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/cinesrc.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "fuegocine",
-      "name": "FuegoCine",
-      "description": "FuegoCine: embeds de la web.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/fuegocine.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "pelispedia",
-      "name": "PelisPedia",
-      "description": "PelisPedia: servidores propios.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/pelispedia.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "seriesmetro",
-      "name": "SeriesMetro",
-      "description": "SeriesMetro: series y peliculas.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/seriesmetro.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "smartpelis",
-      "name": "SmartPelis",
-      "description": "SmartPelis: servidores propios.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/smartpelis.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "vidsrc",
-      "name": "VidSrc",
-      "description": "VidSrc: API publica por tmdb.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/vidsrc.js",
-      "enabled": true,
-      "formats": [
-        "mp4",
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "embed69",
-      "name": "Embed69",
-      "description": "Embed69: HLS directo verificado (200 + #EXTM3U) de sus embeds, con Referer/Origin.",
-      "version": "1.0.0",
-      "author": "MasterScrap",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/embed69.js",
-      "enabled": true,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "cinecalidad_kl",
-      "name": "CineCalidad",
-      "description": "Películas en Latino desde CineCalidad. Vimeos, VOE, StreamWish.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie"
-      ],
-      "filename": "providers/cinecalidad_kl.js",
-      "enabled": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "embed69_kl",
-      "name": "Embed69",
-      "description": "Streams en Latino/Español/Subtitulado desde Embed69. StreamWish, VOE.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/embed69_kl.js",
-      "enabled": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "zoowomaniacos",
-      "name": "Zoowomaniacos",
-      "description": "Películas de culto, cine de autor y difíciles de encontrar. OkRu.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie"
-      ],
-      "filename": "providers/zoowomaniacos.js",
-      "enabled": true,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "xupalace",
-      "name": "Xupalace",
-      "description": "Streams en Latino desde Xupalace. StreamWish, VOE, Vidhide.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/xupalace.js",
-      "enabled": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "seriesmetro_kl",
-      "name": "SeriesMetro",
-      "description": "Streams en Latino desde SeriesMetro. Fastream.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/seriesmetro_kl.js",
-      "enabled": true,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "peliserieshoy",
-      "name": "PelisSeriesHoy",
-      "description": "Streams en Latino desde PelisSeriesHoy.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/peliserieshoy.js",
-      "enabled": true,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "seriesflix",
-      "name": "Seriesflix",
-      "description": "Streams en Latino desde Seriesflix.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "tv"
-      ],
-      "filename": "providers/seriesflix.js",
-      "enabled": true,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "detodopeliculas",
-      "name": "Detodopeliculas",
-      "description": "Streams en Latino desde Detodopeliculas.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/detodopeliculas.js",
-      "enabled": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "lamovie",
-      "name": "LaMovie",
-      "description": "Streams en Latino desde LaMovie.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/lamovie.js",
-      "enabled": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "hackstore_kl",
-      "name": "HackStore",
-      "description": "Streams en Latino desde HackStore.",
-      "version": "2.0.0",
-      "author": "KennethJYS",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/hackstore_kl.js",
-      "enabled": false,
-      "formats": [
-        "m3u8"
-      ],
       "contentLanguage": [
         "es"
       ]
