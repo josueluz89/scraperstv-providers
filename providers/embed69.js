@@ -399,10 +399,12 @@ function parseImdbFromTmdb(data) {
 }
 
 // Presupuesto duro del provider. El motor (Fire TV) corta a los ~9 s, asi que
-// todo el pipeline tiene que cerrar bastante antes: 6 s de trabajo + 0.5 s de
+// todo el pipeline tiene que cerrar bastante antes: 4,2 s de trabajo + 0.5 s de
 // margen para que withTimeout devuelva lo que ya este listo (medido: 4-6.5 s
-// con red real).
-var BUDGET_MS = 6000;
+// con red real). El motor da 9 s, pero en el Fire TV la red es mas lenta que en
+// Node: con 6 s llegaba tarde y devolvia 0 enlaces; con 4,2 s siempre devuelve
+// los que ya resolvio (con sus cabeceras, que es lo que el relay necesita).
+var BUDGET_MS = 4200;
 
 // Date es parte del lenguaje (no una API de host), con fallback por si no
 // estuviera: sin reloj, el techo real lo pone withTimeout igual.
