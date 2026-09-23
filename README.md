@@ -37,7 +37,7 @@ module.exports = { getStreams };
 
 ## Providers
 
-17 entradas en `manifest.json`, 13 activas.
+22 entradas en `manifest.json` (22 archivos en `providers/`, ninguno huérfano), 14 activas.
 
 | id | archivo | estado | última verificación (2026-09-23) |
 |----|---------|--------|----------------------------------|
@@ -54,13 +54,18 @@ module.exports = { getStreams };
 | seriesmetro_kl | `providers/seriesmetro_kl.js` | activo | Dune2 1, GoT S1E1 1 |
 | smartpelis | `providers/smartpelis.js` | activo | Dune2 3, Breaking Bad S1E1 2 |
 | fuegocine | `providers/fuegocine.js` | activo | scrape del sitio (Blogger, `_SV_LINKS` del post): Dune2 4, Deadpool y Wolverine 5, IntensaMente 2 2, Reacher S2E3 3, The Boys S3E1 3 |
+| unlimplay | `providers/unlimplay.js` | activo | QuickJS OK: Dune2 9, The Boys S3E1 2 (streamwish/vidhide/filelions) |
+| seriesflix | `providers/seriesflix.js` | **off** | corregido para cargar (series→tv + polyfills) pero seriesflixhd.best no devuelve episodios |
+| lamovie | `providers/lamovie.js` | **off** | lamovie.org devuelve 503 |
+| cinecalidad_kl | `providers/cinecalidad_kl.js` | **off** | cinecalidad.vg devuelve 503 |
+| detodopeliculas | `providers/detodopeliculas.js` | **off** | detodopeliculas.nu sin respuesta; usa crypto-js + Buffer |
 | masters | `providers/masters.js` | **off** | gnulahd.nu / ww3 devuelven 502 |
 | fanpelis | `providers/fanpelis.js` | **off** | fanpelis.to no responde (timeout) |
 | cinecalidad | `providers/cinecalidad.js` | **off** | cinecalidad.ec/.to sin respuesta |
 | lacartoons | `providers/lacartoons.js` | **off** | lacartoons.com con timeout (0 bytes) |
 
-Sin registrar (por lo tanto **Nuvio no los carga**): `unlimplay`, `detodopeliculas`, `lamovie`,
-`seriesflix`, `cinecalidad_kl` — quedan en `providers/` como referencia/backup.
+Los `enabled: false` quedan en el manifiesto **con la causa**: así Nuvio los lista y se ve por qué
+están apagados, en vez de desaparecer del repo sin explicación.
 
 ## Arreglar o agregar un provider
 
@@ -79,7 +84,18 @@ Sin registrar (por lo tanto **Nuvio no los carga**): `unlimplay`, `detodopelicul
 node -e "require('./providers/<id>.js').getStreams(693134,'movie',1,1).then(r=>console.log(r.length,r))"
 node -e "require('./providers/<id>.js').getStreams(76479,'series',3,1).then(r=>console.log(r.length))"
 python -c "import json;json.load(open('manifest.json',encoding='utf-8'))"
+
+# Y el paso que de verdad decide si Nuvio lo carga: correrlo en QuickJS pelado
+npm i                 # instala quickjs-emscripten (arnés de prueba)
+node scripts/qjs-check.cjs <id> 693134 movie
+node scripts/qjs-check.cjs <id> 76479 series 3 1
 ```
+
+   `scripts/qjs-check.cjs` levanta QuickJS con **solo** lo que da Nuvio (console, fetch, Promise,
+   `require('crypto-js')`, timers que no se esperan) y sin `Buffer`/`URL`/`atob`/`TextEncoder`/
+   `String.normalize`/`matchAll`. Salidas: `OK <id> … -> N streams`, `LOAD-ERR` (no carga en el
+   sandbox: falta un polyfill), `REJECT`/`TIMEOUT`. Ese arnés es el que distingue «no carga en Nuvio»
+   de «carga y el sitio no da nada».
 
    Y los enlaces directos con `curl -sI` (esperado `200` + `video/mp4` o
    `application/vnd.apple.mpegurl`). Un `404` del host es archivo borrado, no bug del provider;

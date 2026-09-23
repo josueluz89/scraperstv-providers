@@ -1,3 +1,115 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Polyfills para el runtime de Nuvio (QuickJS): no trae atob/btoa, no trae ICU
+// (String.normalize) y puede no traer matchAll / Promise.any / allSettled.
+// ─────────────────────────────────────────────────────────────────────────────
+var B64CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function atob(input) {
+  var str = String(input == null ? "" : input).replace(/[^A-Za-z0-9+/]/g, "");
+  var out = "";
+  var bits = 0;
+  var val = 0;
+  for (var i = 0; i < str.length; i++) {
+    var idx = B64CHARS.indexOf(str.charAt(i));
+    if (idx < 0) continue;
+    val = (val << 6) | idx;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += String.fromCharCode((val >> bits) & 0xff);
+    }
+  }
+  return out;
+}
+
+function btoa(input) {
+  var str = String(input == null ? "" : input);
+  var out = "";
+  var i = 0;
+  while (i < str.length) {
+    var c1 = str.charCodeAt(i++) & 0xff;
+    var c2 = i < str.length ? str.charCodeAt(i++) & 0xff : NaN;
+    var c3 = i < str.length ? str.charCodeAt(i++) & 0xff : NaN;
+    var e1 = c1 >> 2;
+    var e2 = ((c1 & 3) << 4) | (isNaN(c2) ? 0 : c2 >> 4);
+    var e3 = isNaN(c2) ? 64 : ((c2 & 15) << 2) | (isNaN(c3) ? 0 : c3 >> 6);
+    var e4 = isNaN(c3) ? 64 : c3 & 63;
+    out += B64CHARS.charAt(e1) + B64CHARS.charAt(e2) + (e3 === 64 ? "=" : B64CHARS.charAt(e3)) + (e4 === 64 ? "=" : B64CHARS.charAt(e4));
+  }
+  return out;
+}
+
+var ACENTOS = {
+  "\u00e1": "a", "\u00e0": "a", "\u00e4": "a", "\u00e2": "a", "\u00e3": "a", "\u00e5": "a",
+  "\u00e9": "e", "\u00e8": "e", "\u00eb": "e", "\u00ea": "e",
+  "\u00ed": "i", "\u00ec": "i", "\u00ef": "i", "\u00ee": "i",
+  "\u00f3": "o", "\u00f2": "o", "\u00f6": "o", "\u00f4": "o", "\u00f5": "o",
+  "\u00fa": "u", "\u00f9": "u", "\u00fc": "u", "\u00fb": "u",
+  "\u00f1": "n", "\u00e7": "c",
+  "\u00c1": "A", "\u00c0": "A", "\u00c4": "A", "\u00c2": "A", "\u00c3": "A",
+  "\u00c9": "E", "\u00c8": "E", "\u00cb": "E", "\u00ca": "E",
+  "\u00cd": "I", "\u00cc": "I", "\u00cf": "I", "\u00ce": "I",
+  "\u00d3": "O", "\u00d2": "O", "\u00d6": "O", "\u00d4": "O", "\u00d5": "O",
+  "\u00da": "U", "\u00d9": "U", "\u00dc": "U", "\u00db": "U",
+  "\u00d1": "N", "\u00c7": "C",
+};
+
+if (typeof String.prototype.normalize !== "function") {
+  String.prototype.normalize = function (form) {
+    if (form === "NFD" || form === "NFKD") {
+      return String(this).replace(/[\u00c0-\u017f]/g, function (c) {
+        return ACENTOS[c] || c;
+      });
+    }
+    return String(this);
+  };
+}
+
+if (typeof String.prototype.matchAll !== "function") {
+  String.prototype.matchAll = function (re) {
+    var g = re && re.global ? re : new RegExp(re.source, (re.flags || "").indexOf("g") >= 0 ? re.flags : (re.flags || "") + "g");
+    var out = [];
+    var s = String(this);
+    var m;
+    g.lastIndex = 0;
+    while ((m = g.exec(s)) !== null) {
+      out.push(m);
+      if (m.index === g.lastIndex) g.lastIndex++;
+    }
+    return out;
+  };
+}
+
+if (typeof Promise.any !== "function") {
+  Promise.any = function (list) {
+    return new Promise(function (resolve, reject) {
+      var items = Array.prototype.slice.call(list || []);
+      var errores = [];
+      var pendientes = items.length;
+      if (!pendientes) return reject(new Error("All promises were rejected"));
+      items.forEach(function (p, i) {
+        Promise.resolve(p).then(resolve, function (e) {
+          errores[i] = e;
+          if (--pendientes === 0) reject(new Error("All promises were rejected"));
+        });
+      });
+    });
+  };
+}
+
+if (typeof Promise.allSettled !== "function") {
+  Promise.allSettled = function (list) {
+    return Promise.all(
+      Array.prototype.slice.call(list || []).map(function (p) {
+        return Promise.resolve(p).then(
+          function (value) { return { status: "fulfilled", value: value }; },
+          function (reason) { return { status: "rejected", reason: reason }; }
+        );
+      })
+    );
+  };
+}
+
 var x = Object.defineProperty;
 var R = Object.getOwnPropertyDescriptor;
 var b = Object.getOwnPropertyNames, y = Object.getOwnPropertySymbols;
@@ -156,6 +268,8 @@ function O(n) {
 }
 function q(n, e, t, l) {
   return d(this, null, function* () {
+    if (e = String(e || "").toLowerCase(), e === "series" || e === "anime")
+      e = "tv";
     if (!n || e !== "tv")
       return [];
     let r = Date.now();

@@ -357,6 +357,110 @@
       "contentLanguage": [
         "es"
       ]
+    },
+    {
+      "id": "unlimplay",
+      "name": "Unlimplay",
+      "description": "Verificado 2026-09-23 en QuickJS: Dune2 9, The Boys S3E1 2 (streamwish/vidhide/filelions desde el embed).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/unlimplay.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=unlimplay.com&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "seriesflix",
+      "name": "SeriesFlixHD",
+      "description": "DESHABILITADO 2026-09-23: carga en QuickJS (fix mediaType series->tv + polyfills atob/matchAll/normalize/Promise.any) pero seriesflixhd.best responde 200 y no devuelve episodios (0 streams, The Boys S3E1).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "tv"
+      ],
+      "filename": "providers/seriesflix.js",
+      "enabled": false,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=seriesflixhd.best&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "lamovie",
+      "name": "LaMovie",
+      "description": "DESHABILITADO 2026-09-23: lamovie.org devuelve 503 y el provider no encuentra slugs (0 streams, Dune2).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/lamovie.js",
+      "enabled": false,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=lamovie.org&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "cinecalidad_kl",
+      "name": "CineCalidad KL",
+      "description": "DESHABILITADO 2026-09-23: cinecalidad.vg devuelve 503 y el provider termina con 0 embeds (0 streams, Dune2).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinecalidad_kl.js",
+      "enabled": false,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=cinecalidad.vg&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "detodopeliculas",
+      "name": "DeTodoPeliculas",
+      "description": "DESHABILITADO 2026-09-23: detodopeliculas.nu no responde (timeout) y el bundle usa crypto-js + Buffer (necesita los externos de Nuvio); 0 streams.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/detodopeliculas.js",
+      "enabled": false,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=detodopeliculas.nu&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
     }
   ]
 }

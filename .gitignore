@@ -1,8 +1,5 @@
-# Dart / Flutter espejo
-.dart_tool/
-.build/
-*.g.dart
-*.freezed.dart
+# deps (solo herramientas de desarrollo: build y arnés QuickJS)
+node_modules/
 
 # OS
 .DS_Store
