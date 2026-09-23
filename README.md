@@ -2,13 +2,13 @@
 
 Repo privado (`josueluz89/scraperstv-providers`) con los **providers JS que corre Nuvio**.
 Nuvio descarga este repo, lee `manifest.json` y ejecuta cada `providers/<id>.js` en QuickJS
-(motor tipo Stremio). Nada de esto se usa ya en la app Flutter: `lib/` queda como legado.
+(motor tipo Stremio). Todo el repo es para Nuvio: el espejo Dart de `lolapp` que había en `lib/`
+se eliminó.
 
 ```
 manifest.json      -> registro: qué providers existen, tipos, formato, idioma, enabled
 providers/<id>.js  -> el scraper (CommonJS, module.exports = { getStreams })
 src/               -> fuentes esbuild opcionales (node build.js <id> regenera providers/<id>.js)
-lib/               -> LEGADO: espejo Dart de lolapp. No se toca salvo pedido explícito.
 ```
 
 ## Contrato
