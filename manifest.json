@@ -1,6 +1,6 @@
 {
   "name": "Masters Repo",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "scrapers": [
     {
       "id": "masters",
@@ -123,6 +123,213 @@
         "mp4"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=lacartoons.com&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "embed69",
+      "name": "Embed69",
+      "description": "Verificado 2026-09-23: Dune2 6 m3u8 directos, Breaking Bad S1E1 4.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/embed69.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=embed69.org&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "poseidon",
+      "name": "PoseidonHD2",
+      "description": "Verificado 2026-09-23: Dune2 8 embeds (solo pelis; series 0).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie"
+      ],
+      "filename": "providers/poseidon.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=poseidonhd2.co&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "tioplus",
+      "name": "TioPlus",
+      "description": "Verificado 2026-09-23: Dune2 4, Breaking Bad S1E1 9.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/tioplus.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=tioplus.app&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "vidsrc",
+      "name": "VidSrc",
+      "description": "Verificado 2026-09-23: Dune2 2, Breaking Bad S1E1 2 (EN).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidsrc.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=vidsrc.sh&sz=128",
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "cinesrc",
+      "name": "CineSRC",
+      "description": "Verificado 2026-09-23: Dune2 1, Breaking Bad S1E1 1.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinesrc.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=cinesrc.st&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "pelisplus",
+      "name": "PelisPlusHD",
+      "description": "Verificado 2026-09-23: Dune2 1 (solo pelis; series 0).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie"
+      ],
+      "filename": "providers/pelisplus.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=pelisplushd.bz&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "pelispedia",
+      "name": "Pelispedia",
+      "description": "Verificado 2026-09-23: Dune2 3 fastream m3u8, Breaking Bad S1E1 2.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pelispedia.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "seriesmetro",
+      "name": "SeriesMetro",
+      "description": "Verificado 2026-09-23: Dune2 3, Breaking Bad S1E1 2.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/seriesmetro.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=www3.seriesmetro.net&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "seriesmetro_kl",
+      "name": "SeriesMetro KL",
+      "description": "Verificado 2026-09-23: Dune2 1 (solo pelis; series 0 por bug TMDB).",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie"
+      ],
+      "filename": "providers/seriesmetro_kl.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=www3.seriesmetro.net&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "smartpelis",
+      "name": "SmartPelis",
+      "description": "Verificado 2026-09-23: Dune2 3, Breaking Bad S1E1 2.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/smartpelis.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=smartpelis.tv&sz=128",
       "contentLanguage": [
         "es"
       ]
