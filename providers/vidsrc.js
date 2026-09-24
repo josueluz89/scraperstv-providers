@@ -304,7 +304,10 @@ async function getStreams(tmdbId, mediaType, season, episode) {
   try {
     var id = parseInt(tmdbId, 10);
     if (!(id > 0)) return [];
-    var esPelicula = String(mediaType == null ? "movie" : mediaType).toLowerCase() !== "tv";
+    // Nuvio manda tipos de Stremio ("movie"/"series", tambien "anime"): solo "movie"
+    // es pelicula. Comparar contra "tv" a secas convertia toda serie en pelicula.
+    var tipo = String(mediaType == null ? "movie" : mediaType).toLowerCase();
+    var esPelicula = tipo === "movie";
     var s = parseInt(season, 10) || 1;
     var e = parseInt(episode, 10) || 1;
     var lista = candidatos(id, esPelicula, s, e);
@@ -317,7 +320,9 @@ async function getStreams(tmdbId, mediaType, season, episode) {
       var html = res.html;
       var base = origen(res.url) || origen(embedUrl);
       if (!base) continue;
-      if (!fallback) fallback = base + (esPelicula ? "/embed/movie/" : "/embed/tv/") + id;
+      if (!fallback) {
+        fallback = base + (esPelicula ? "/embed/movie/" + id : "/embed/tv/" + id + "/" + s + "-" + e);
+      }
 
       // --- Flujo nuevo: data-api -> /vs_src.php -> player con token ---
       var apiPath = parseDataApi(html);

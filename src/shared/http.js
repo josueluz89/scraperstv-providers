@@ -1,4 +1,6 @@
-const FETCH_TIMEOUT = 20000;
+// 12 s por petición: el grueso de las páginas responde en <1,5 s, y un host muerto
+// (o colgado, como unlimplay) antes quemaba 20 s del presupuesto del reproductor.
+const FETCH_TIMEOUT = 12000;
 
 function fetchWithTimeout(url, options, timeout) {
   if (!options) options = {};

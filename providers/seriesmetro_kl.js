@@ -1,3 +1,90 @@
+// ── Polyfills del runtime QuickJS (Nuvio no trae normalize/matchAll/URLSearchParams) ──
+var ACENTOS_KL = {
+  "\u00e1": "a", "\u00e0": "a", "\u00e4": "a", "\u00e2": "a", "\u00e3": "a", "\u00e5": "a",
+  "\u00e9": "e", "\u00e8": "e", "\u00eb": "e", "\u00ea": "e",
+  "\u00ed": "i", "\u00ec": "i", "\u00ef": "i", "\u00ee": "i",
+  "\u00f3": "o", "\u00f2": "o", "\u00f6": "o", "\u00f4": "o", "\u00f5": "o",
+  "\u00fa": "u", "\u00f9": "u", "\u00fc": "u", "\u00fb": "u",
+  "\u00f1": "n", "\u00e7": "c",
+  "\u00c1": "A", "\u00c0": "A", "\u00c4": "A", "\u00c2": "A", "\u00c3": "A",
+  "\u00c9": "E", "\u00c8": "E", "\u00cb": "E", "\u00ca": "E",
+  "\u00cd": "I", "\u00cc": "I", "\u00cf": "I", "\u00ce": "I",
+  "\u00d3": "O", "\u00d2": "O", "\u00d6": "O", "\u00d4": "O", "\u00d5": "O",
+  "\u00da": "U", "\u00d9": "U", "\u00dc": "U", "\u00db": "U",
+  "\u00d1": "N", "\u00c7": "C"
+};
+if (typeof String.prototype.normalize !== "function") {
+  String.prototype.normalize = function (form) {
+    if (form === "NFD" || form === "NFKD") {
+      return String(this).replace(/[\u00c0-\u017f]/g, function (c) {
+        return ACENTOS_KL[c] || c;
+      });
+    }
+    return String(this);
+  };
+}
+if (typeof String.prototype.matchAll !== "function") {
+  String.prototype.matchAll = function (re) {
+    var g = re && re.global ? re : new RegExp(re.source, ((re && re.flags) || "").indexOf("g") >= 0 ? re.flags : ((re && re.flags) || "") + "g");
+    var out = [];
+    var s = String(this);
+    var m;
+    g.lastIndex = 0;
+    while ((m = g.exec(s)) !== null) {
+      out.push(m);
+      if (m.index === g.lastIndex) g.lastIndex++;
+    }
+    return out;
+  };
+}
+if (typeof URLSearchParams === "undefined") {
+  var URLSearchParams = function (init) {
+    this._pares = [];
+    if (typeof init === "string") {
+      var trozos = String(init).replace(/^\?/, "").split("&");
+      for (var i = 0; i < trozos.length; i++) {
+        if (!trozos[i]) continue;
+        var kv = trozos[i].split("=");
+        this._pares.push([decodeURIComponent(kv[0] || ""), decodeURIComponent(kv.slice(1).join("=") || "")]);
+      }
+    } else if (init && typeof init === "object") {
+      var claves = Object.keys(init);
+      for (var j = 0; j < claves.length; j++) this._pares.push([claves[j], String(init[claves[j]])]);
+    }
+  };
+  URLSearchParams.prototype.append = function (k, v) { this._pares.push([String(k), String(v)]); };
+  URLSearchParams.prototype.set = function (k, v) {
+    var clave = String(k);
+    for (var i = 0; i < this._pares.length; i++) {
+      if (this._pares[i][0] === clave) { this._pares[i][1] = String(v); return; }
+    }
+    this._pares.push([clave, String(v)]);
+  };
+  URLSearchParams.prototype.toString = function () {
+    var out = [];
+    for (var i = 0; i < this._pares.length; i++) {
+      out.push(encodeURIComponent(this._pares[i][0]) + "=" + encodeURIComponent(this._pares[i][1]));
+    }
+    return out.join("&");
+  };
+}
+if (typeof Promise.any !== "function") {
+  Promise.any = function (lista) {
+    return new Promise(function (resolve, reject) {
+      var items = Array.prototype.slice.call(lista || []);
+      var errores = [];
+      var pendientes = items.length;
+      if (!pendientes) return reject(new Error("All promises were rejected"));
+      items.forEach(function (p, i) {
+        Promise.resolve(p).then(resolve, function (e) {
+          errores[i] = e;
+          if (--pendientes === 0) reject(new Error("All promises were rejected"));
+        });
+      });
+    });
+  };
+}
+
 var $ = Object.defineProperty, _ = Object.defineProperties, F = Object.getOwnPropertyDescriptor, P = Object.getOwnPropertyDescriptors, C = Object.getOwnPropertyNames, A = Object.getOwnPropertySymbols;
 var R = Object.prototype.hasOwnProperty, N = Object.prototype.propertyIsEnumerable;
 var U = (n, t, e) => t in n ? $(n, t, { enumerable: true, configurable: true, writable: true, value: e }) : n[t] = e, m = (n, t) => {
@@ -85,7 +172,7 @@ function L(n) {
       if (!a)
         return null;
       let s = yield k(a, { Referer: "https://fastream.to/", "User-Agent": M });
-      return { url: a, quality: s, headers: { "User-Agent": M, Referer: "https://fastream.to/" } };
+      return { url: a, quality: s, headers: { "User-Agent": M, Referer: "https://fastream.to/", Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "es-ES,es;q=0.9,en;q=0.8" } };
     } catch (e) {
       return console.error("[Fastream] Error:", e), null;
     }
@@ -156,7 +243,7 @@ function j(n, t) {
         let w = yield L(y);
         if (!w)
           continue;
-        if (i.push({ name: "SeriesMetro", title: `${w.quality} \xB7 ${h} \xB7 Fastream`, url: w.url, quality: w.quality, headers: w.headers }), h === "Latino")
+        if (i.push({ name: "SeriesMetro", title: `${w.quality} \xB7 ${h} \xB7 Fastream`, url: w.url, quality: w.quality, language: h, headers: w.headers }), h === "Latino")
           return console.log("[SeriesMetro] Latino encontrado, retornando"), i;
       } catch (g) {
         console.log(`[SeriesMetro] Error embed ${l}: ${g.message}`);

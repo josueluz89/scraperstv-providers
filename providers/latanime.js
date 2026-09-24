@@ -1,6 +1,6 @@
 /**
  * latanime - Built from src/latanime/
- * Generated: 2026-09-24T00:02:11.825Z
+ * Generated: 2026-09-24T05:33:42.791Z
  */
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -43,7 +43,7 @@ var __async = (__this, __arguments, generator) => {
 };
 
 // src/shared/http.js
-var FETCH_TIMEOUT = 2e4;
+var FETCH_TIMEOUT = 12e3;
 function fetchWithTimeout(url, options, timeout) {
   if (!options)
     options = {};
@@ -997,7 +997,8 @@ function puntuar(slug, titulos) {
     if (s === t)
       return 1;
     var base = s.replace(/\s+(latino|castellano|subtitulado)$/, "");
-    if (base === t)
+    var baseJunto = base.replace(/\s+/g, "");
+    if (base === t || baseJunto === t.replace(/\s+/g, ""))
       return 0.98;
     var tokens = t.split(" ").filter(function(w) {
       return w.length > 2 || /^\d+$/.test(w);
@@ -1020,6 +1021,24 @@ function puntuar(slug, titulos) {
       var cobertura = dentro / tokens.length;
       var exacto = base.charAt(0) === t.charAt(0) && base.indexOf(t) === 0;
       var sc = cobertura * (exacto ? 1 : 0.9);
+      var palabras = base.split(" ").filter(function(w) {
+        return w.length > 2 || /^\d+$/.test(w);
+      });
+      var extras = 0;
+      for (var q = 0; q < palabras.length; q++) {
+        var w2 = palabras[q];
+        var conocida = false;
+        for (var j = 0; j < tokens.length; j++) {
+          if (tokens[j] === w2 || tokens[j].indexOf(w2) >= 0 || w2.indexOf(tokens[j]) >= 0 || levenshtein(w2, tokens[j]) <= 1) {
+            conocida = true;
+            break;
+          }
+        }
+        if (!conocida)
+          extras++;
+      }
+      if (extras)
+        sc *= 0.4;
       if (sc > mejor)
         mejor = sc;
     }
@@ -1124,7 +1143,7 @@ function confirmarLatino(candidatos) {
     var ok = candidatos.filter(function(c) {
       return c.latino || c.confirmado;
     });
-    return ok.length ? ok : candidatos;
+    return ok;
   });
 }
 function extraerEpisodio(slug, episodio) {
@@ -1158,6 +1177,10 @@ function extraer(tmdbId, mediaType, season, episode) {
         return b.length - a.length;
       });
       queries.push(palabras[0]);
+      if (palabras.length === 1 && palabras[0].length >= 6) {
+        for (var L = 6; L >= 4; L--)
+          queries.push(palabras[0].slice(0, L));
+      }
     }
     var slugs = [];
     var vistos = {};

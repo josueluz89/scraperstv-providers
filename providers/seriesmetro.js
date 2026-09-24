@@ -202,9 +202,20 @@ function isValidPage(html) {
 
 /** Primera URL de candidatos que responde con la página del reproductor. */
 async function findWorkingUrl(candidates) {
-  for (let i = 0; i < candidates.length; i++) {
-    const html = await fetchText(candidates[i], PAGE_HEADERS);
-    if (html && isValidPage(html)) return { url: candidates[i], html: html };
+  // Se prueban de a TANDA en paralelo: probar los candidatos uno detrás de otro
+  // costaba la suma de todas las latencias (era el grueso de los ~8 s del provider).
+  // Dentro de cada tanda se respeta el orden de preferencia de los candidatos.
+  const TANDA = 6;
+  for (let inicio = 0; inicio < candidates.length; inicio += TANDA) {
+    const tanda = candidates.slice(inicio, inicio + TANDA);
+    const htmls = await Promise.all(
+      tanda.map((u) =>
+        fetchText(u, PAGE_HEADERS).catch(() => null)
+      )
+    );
+    for (let i = 0; i < tanda.length; i++) {
+      if (htmls[i] && isValidPage(htmls[i])) return { url: tanda[i], html: htmls[i] };
+    }
   }
   return null;
 }
@@ -429,13 +440,43 @@ async function extractStreams(tmdbId, mediaType, season, episode) {
 
   const streams = [];
   const seen = [];
+  const unicos = [];
   for (let i = 0; i < rawServers.length; i++) {
     const raw = rawServers[i];
     const url = String(raw.url || "").trim();
     if (!url || seen.indexOf(url) >= 0) continue;
     seen.push(url);
+    unicos.push({ raw, url });
+  }
 
-    const playable = await resolvePlayable(url);
+  // Los servidores se resuelven EN PARALELO (antes uno detrás de otro, así que el
+  // tiempo total era la suma de todas las latencias). Máximo LIMITE a la vez para no
+  // dispararle 10 peticiones al mismo CDN.
+  const LIMITE = 4;
+  const resueltos = new Array(unicos.length);
+  let siguiente = 0;
+  const obreros = [];
+  for (let w = 0; w < Math.min(LIMITE, unicos.length); w++) {
+    obreros.push(
+      (async () => {
+        for (;;) {
+          const idx = siguiente++;
+          if (idx >= unicos.length) return;
+          try {
+            resueltos[idx] = await resolvePlayable(unicos[idx].url);
+          } catch (err) {
+            resueltos[idx] = null;
+          }
+        }
+      })()
+    );
+  }
+  await Promise.all(obreros);
+
+  for (let i = 0; i < unicos.length; i++) {
+    const raw = unicos[i].raw;
+    const url = unicos[i].url;
+    const playable = resueltos[i];
     const finalUrl = playable ? playable.url : url;
     const idioma = idiomaLabel(raw.language);
     const option = raw.option;
@@ -447,6 +488,10 @@ async function extractStreams(tmdbId, mediaType, season, episode) {
       headers: {
         Referer: playable ? playable.referer : (hostOf(url) ? "https://" + hostOf(url) + "/" : BASE + "/"),
         "User-Agent": UA,
+        // El CDN de fastream responde 403 al .m3u8 si falta el Accept de navegador
+        // (comprobado en pelispedia.js): sin esto la URL sale bien y el reproductor no.
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
       },
     });
   }

@@ -28,6 +28,23 @@ const source = file ? fs.readFileSync(file, 'utf-8') : '';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Convierte un valor de Node a un valor de QuickJS (para res.json()). */
+function toQuickJS(ctx, v) {
+  if (v === null || v === undefined) return ctx.null;
+  const t = typeof v;
+  if (t === 'number') return ctx.newNumber(v);
+  if (t === 'string') return ctx.newString(v);
+  if (t === 'boolean') return v ? ctx.true : ctx.false;
+  if (Array.isArray(v)) {
+    const arr = ctx.newArray();
+    v.forEach((item, i) => ctx.setProp(arr, i, toQuickJS(ctx, item)));
+    return arr;
+  }
+  const obj = ctx.newObject();
+  Object.keys(v).forEach((k) => ctx.setProp(obj, k, toQuickJS(ctx, v[k])));
+  return obj;
+}
+
 (async () => {
   const QuickJS = await getQuickJS();
   const ctx = QuickJS.newContext();
@@ -68,11 +85,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const o = ctx.newObject();
         ctx.setProp(o, 'status', ctx.newNumber(res.status));
         ctx.setProp(o, 'ok', res.ok ? ctx.true : ctx.false);
+        ctx.setProp(o, 'url', ctx.newString(res.url || url));
         const hh = ctx.newObject();
         res.headers.forEach((v, k) => ctx.setProp(hh, k, v));
         ctx.setProp(o, 'headers', hh);
-        ctx.setProp(o, 'text', ctx.newFunction('text', () => ctx.newString(texto)));
-        ctx.setProp(o, 'json', ctx.newFunction('json', () => ctx.unwrapResult(ctx.evalCode(`(${JSON.stringify(texto)})`, 'fetch.json')).consume((h) => h)));
+        // `text()`/`json()` devuelven PROMESAS, como el fetch real de Nuvio: si aquí
+        // se devuelve el valor pelado, un provider que hace `res.text().then(...)`
+        // muere con TypeError y el fallo se disfraza de "0 streams".
+        ctx.setProp(o, 'text', ctx.newFunction('text', () => {
+          const d = ctx.newPromise();
+          d.resolve(ctx.newString(texto));
+          return d.handle;
+        }));
+        ctx.setProp(o, 'json', ctx.newFunction('json', () => {
+          const d = ctx.newPromise();
+          let parsed;
+          let fallo = null;
+          try {
+            parsed = JSON.parse(texto);
+          } catch (e) {
+            fallo = e.message || 'JSON invalido';
+          }
+          if (fallo) d.reject(ctx.newError(fallo));
+          else d.resolve(toQuickJS(ctx, parsed));
+          return d.handle;
+        }));
         deferred.resolve(o);
       } catch (e) {
         if (VERBOSE) console.log(`[qjs:fetch-ERR] ${url} ${e.message}`);

@@ -158,12 +158,14 @@ function buscar(query) {
 function puntuar(slug, titulos) {
   var s = norm(slug);
   var mejor = 0;
+  // el sitio pega palabras ("BLUELOCK" vs slug "blue-lock-latino"): comparar sin espacios
   for (var i = 0; i < titulos.length; i++) {
     var t = norm(titulos[i]);
     if (!t) continue;
     if (s === t) return 1;
     var base = s.replace(/\s+(latino|castellano|subtitulado)$/, '');
-    if (base === t) return 0.98;
+    var baseJunto = base.replace(/\s+/g, '');
+    if (base === t || baseJunto === t.replace(/\s+/g, '')) return 0.98;
     // tokens significativos del título presentes en el slug
     var tokens = t.split(' ').filter(function (w) {
       return w.length > 2 || /^\d+$/.test(w);
@@ -185,6 +187,25 @@ function puntuar(slug, titulos) {
       var cobertura = dentro / tokens.length;
       var exacto = base.charAt(0) === t.charAt(0) && base.indexOf(t) === 0;
       var sc = cobertura * (exacto ? 1 : 0.9);
+      // Palabras del slug que el título no menciona: casi siempre es OTRA obra, no
+      // el mismo anime ("the-boys-diabolico-latino" para TMDB 76479 The Boys, o
+      // "futsal-boys"). Castigo fuerte para que no pase el umbral de elegirCandidato.
+      var palabras = base.split(' ').filter(function (w) {
+        return w.length > 2 || /^\d+$/.test(w);
+      });
+      var extras = 0;
+      for (var q = 0; q < palabras.length; q++) {
+        var w2 = palabras[q];
+        var conocida = false;
+        for (var j = 0; j < tokens.length; j++) {
+          if (tokens[j] === w2 || tokens[j].indexOf(w2) >= 0 || w2.indexOf(tokens[j]) >= 0 || levenshtein(w2, tokens[j]) <= 1) {
+            conocida = true;
+            break;
+          }
+        }
+        if (!conocida) extras++;
+      }
+      if (extras) sc *= 0.4;
       if (sc > mejor) mejor = sc;
     }
   }
@@ -304,9 +325,9 @@ function confirmarLatino(candidatos) {
     var ok = candidatos.filter(function (c) {
       return c.latino || c.confirmado;
     });
-    // si ninguna página se confirma latino, no inventamos: se intenta igual con
-    // las que no dijeron "castellano" (el sitio a veces no marca el idioma)
-    return ok.length ? ok : candidatos;
+    // ESTRICTO: solo latino. Ni el slug ni el <title> lo confirman -> no se emite nada
+    // (antes se caía a las entradas sin idioma marcado, y eso podía colar castellano).
+    return ok;
   });
 }
 
@@ -346,6 +367,13 @@ async function extraer(tmdbId, mediaType, season, episode) {
       return b.length - a.length;
     });
     queries.push(palabras[0]);
+    // El buscador del sitio es un LIKE sobre el título tal cual: un título pegado
+    // ("BLUELOCK") no da nada ni con su prefijo "Bluel", pero sí con el trozo que
+    // coincide con la primera palabra del sitio ("blue" en "Blue Lock"). Se prueban
+    // prefijos decrecientes y el scoring descarta el ruido; el bucle corta a 6 slugs.
+    if (palabras.length === 1 && palabras[0].length >= 6) {
+      for (var L = 6; L >= 4; L--) queries.push(palabras[0].slice(0, L));
+    }
   }
 
   var slugs = [];

@@ -1,6 +1,6 @@
 /**
  * cinecalidad - Built from src/cinecalidad/
- * Generated: 2026-09-23T17:03:40.243Z
+ * Generated: 2026-09-24T05:33:42.857Z
  */
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -43,7 +43,7 @@ var __async = (__this, __arguments, generator) => {
 };
 
 // src/shared/http.js
-var FETCH_TIMEOUT = 2e4;
+var FETCH_TIMEOUT = 12e3;
 function fetchWithTimeout(url, options, timeout) {
   if (!options)
     options = {};
@@ -833,215 +833,155 @@ function getEmbedResolver(url) {
   }
   return null;
 }
+function getServerLabel(url) {
+  if (url.includes("voe.sx") || url.includes("cloudwindow"))
+    return "VOE";
+  if (url.includes("streamwish") || url.includes("hlswish") || url.includes("vibuxer") || url.includes("strwish") || url.includes("premilkyway"))
+    return "StreamWish";
+  if (url.includes("vidhide") || url.includes("dintezuvio") || url.includes("minochinos") || url.includes("dramiyos") || url.includes("dhcplay") || url.includes("smoothpre") || url.includes("dhtpre") || url.includes("vidspeeder") || url.includes("moorearn") || url.includes("travid") || url.includes("vidhidehub") || url.includes("vidhidevip") || url.includes("vidhidepre") || url.includes("kinoger") || url.includes("movearnpre") || url.includes("peytonepre") || url.includes("filelions"))
+    return "VidHide";
+  if (url.includes("byse") || url.includes("filemoon") || url.includes("rapidvideo"))
+    return "FileMoon";
+  if (url.includes("luluvid") || url.includes("lulus"))
+    return "Lulu";
+  if (url.includes("uqload"))
+    return "Uqload";
+  if (url.includes("goodstream"))
+    return "GoodStream";
+  if (url.includes("vimeos"))
+    return "Vimeos";
+  if (url.includes("doodstream") || url.includes("dsvplay") || url.includes("dood."))
+    return "Dood";
+  return "Online";
+}
 
-// src/cinecalidad/extractor.js
-var TMDB_API_KEY = "1f54bd990f1cdfb230adb312546d765d";
-var SEARCH_URL = "https://www.cinecalidad.ec";
-var FALLBACK_URLS = ["https://www.cinecalidad.ec", "https://cinecalidad.ec", "https://cinecalidad.to"];
-var ACCENT_MAP = { "\xE1": "a", "\xE9": "e", "\xED": "i", "\xF3": "o", "\xFA": "u", "\xFC": "u", "\xF1": "n", "\xC1": "a", "\xC9": "a", "\xCD": "i", "\xD3": "o", "\xDA": "u", "\xDC": "u", "\xD1": "n", "\xE0": "a", "\xE8": "e", "\xEC": "i", "\xF2": "o", "\xF9": "u", "\xE2": "a", "\xEA": "e", "\xEE": "i", "\xF4": "o", "\xFB": "u", "\xE4": "a", "\xEB": "e", "\xEF": "i", "\xF6": "o", "\xE7": "c", "\xE3": "a", "\xF5": "o" };
-function stripAccents(s) {
-  return (s || "").replace(/[^\x00-\x7F]/g, function(c) {
-    return ACCENT_MAP[c] || "";
-  });
-}
-function normalizeText(text) {
-  if (!text)
+// src/shared/tmdbPortal.js
+var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+function portalPlayerUrl(player, code) {
+  if (!player || !code || String(player).indexOf("%fileCode%") < 0)
     return "";
-  return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+  return String(player).replace("%fileCode%", code);
 }
-function getMediaTitle(tmdbId, tmdbType) {
-  var url = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY + "&language=es-MX";
-  return fetchJson(url).then(function(data) {
-    var isMovie = tmdbType === "movie";
-    var date = isMovie ? data.release_date : data.first_air_date;
-    return {
-      title: isMovie ? data.title : data.name,
-      originalTitle: isMovie ? data.original_title : data.original_name,
-      year: date && date.length >= 4 ? date.slice(0, 4) : null
-    };
-  });
+function portalCodeUrl(apiBase, tmdbId, mediaType, season, episode) {
+  var esPelicula = String(mediaType || "").toLowerCase() === "movie";
+  if (esPelicula)
+    return apiBase + "/v1/items/movie/" + tmdbId;
+  var s = parseInt(season, 10);
+  if (isNaN(s) || s < 1)
+    s = 1;
+  var e = parseInt(episode, 10);
+  if (isNaN(e) || e < 1)
+    e = 1;
+  return apiBase + "/v1/items/tvshow/" + tmdbId + "/seasons/" + s + "/episodes/" + e;
 }
-function searchSite(query) {
-  function tryUrls(idx) {
-    if (idx >= FALLBACK_URLS.length)
-      return Promise.resolve([]);
-    var url = FALLBACK_URLS[idx] + "/?s=" + encodeURIComponent(query);
-    return fetchText(url, { headers: { Referer: FALLBACK_URLS[idx] + "/" } }).then(function(html) {
-      var out = [];
-      var artRe = /<article[\s\S]*?<\/article>/gi;
-      var am;
-      while ((am = artRe.exec(html)) !== null) {
-        var lm = am[0].match(/<a\b[^>]*href="([^"]+)"/i);
-        if (!lm)
-          continue;
-        var href = lm[1];
-        if (href.indexOf("/ver-pelicula/") === -1 && href.indexOf("/ver-serie/") === -1)
-          continue;
-        var title = am[0].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-        out.push({ title: title.slice(0, 80), href });
-      }
-      if (out.length > 0)
-        return out;
-      return tryUrls(idx + 1);
-    }).catch(function() {
-      return tryUrls(idx + 1);
-    });
-  }
-  return tryUrls(0);
+function portalCode(data) {
+  if (!data || typeof data !== "object")
+    return "";
+  var nodo = data.item || data.episode || null;
+  if (!nodo || !nodo.code)
+    return "";
+  return String(nodo.code);
 }
-function pickBest(cands, media, wantTv, ignoreYear) {
-  var no = normalizeText(media.originalTitle || "");
-  var nt = normalizeText(media.title || "");
-  var best = null, bestScore = -1;
-  for (var i = 0; i < cands.length; i++) {
-    var c = cands[i];
-    var isTv = c.href.indexOf("/ver-serie/") !== -1;
-    if (wantTv !== isTv)
-      continue;
-    var nc = normalizeText(c.title);
-    var score = 0;
-    if (nc === no || nc === nt)
-      score = 100;
-    else if (no && (nc.indexOf(no) !== -1 || no.indexOf(nc) !== -1) || nt && (nc.indexOf(nt) !== -1 || nt.indexOf(nc) !== -1))
-      score = 80;
-    if (score === 0) {
-      var words = (no + " " + nt).split(" ").filter(function(w2) {
-        return w2.length >= 4;
-      });
-      var qm = 0;
-      for (var w = 0; w < words.length; w++) {
-        if (nc.indexOf(words[w]) !== -1)
-          qm++;
-      }
-      if (qm === 0)
-        continue;
-      score = qm * 10;
-    }
-    if (!ignoreYear && media.year && c.title.indexOf(media.year) !== -1)
-      score += 5;
-    if (score > bestScore) {
-      bestScore = score;
-      best = c;
-    }
-  }
-  if (!best || bestScore < 10)
-    return null;
-  return best;
+function portalTitles(apiBase, tmdbId, mediaType, season, episode) {
+  return fetchJson(portalCodeUrl(apiBase, tmdbId, mediaType, season, episode), {
+    headers: { "User-Agent": UA, Accept: "application/json" }
+  }, 12e3);
 }
-function optionsFromPage(html) {
-  var out = [];
-  var re = /<li[^>]*data-option=["']([^"']+)["'][^>]*>/gi;
-  var m;
-  while ((m = re.exec(html)) !== null) {
-    var url = m[1];
-    if (!url || url.indexOf("http") !== 0)
-      continue;
-    if (url.indexOf("youtube.com") !== -1 || url.indexOf("youtu.be") !== -1)
-      continue;
-    out.push(url);
-  }
-  var seen = {};
-  return out.filter(function(u) {
-    if (seen[u])
-      return false;
-    seen[u] = true;
-    return true;
-  });
-}
-function resolveOptions(urls) {
-  var streams = [];
-  var jobs = urls.map(function(src) {
-    var fixed = mapDomain(src);
-    var resolver = getEmbedResolver(fixed);
-    if (!resolver)
-      return Promise.resolve();
-    var host = "";
+function extraerPortal(apiBase, player, tmdbId, mediaType, season, episode) {
+  return __async(this, null, function* () {
+    var data = null;
     try {
-      host = fixed.split("/")[2];
+      data = yield portalTitles(apiBase, tmdbId, mediaType, season, episode);
     } catch (e) {
+      return [];
     }
-    return resolver(fixed).then(function(r) {
-      if (r && r.url) {
-        streams.push({
-          name: "CineCalidad (" + host + ")",
-          title: (r.quality || "HD") + " \xB7 LAT \xB7 " + host,
-          url: r.url,
-          quality: r.quality || "HD",
-          headers: r.headers
-        });
+    var code = portalCode(data);
+    if (!code)
+      return [];
+    var embed = portalPlayerUrl(player, code);
+    if (!embed)
+      return [];
+    var streams = [];
+    var resolver = null;
+    try {
+      resolver = getEmbedResolver(embed);
+    } catch (e) {
+      resolver = null;
+    }
+    if (typeof resolver === "function") {
+      for (var intento = 0; intento < 3 && !streams.length; intento++) {
+        try {
+          var r = yield resolver(embed);
+          if (r && r.url) {
+            var cabeceras = Object.assign({ "User-Agent": UA }, r.headers || {});
+            if (yield urlReproducible(r.url, cabeceras)) {
+              streams.push({
+                title: getServerLabel(embed) + " \xB7 Latino",
+                quality: r.quality || "HD",
+                language: "Latino",
+                url: r.url,
+                headers: cabeceras
+              });
+            }
+          }
+        } catch (e) {
+        }
       }
-    }).catch(function() {
-    });
-  });
-  return Promise.all(jobs).then(function() {
+    }
+    if (streams.length) {
+      streams.push({
+        title: getServerLabel(embed) + " \xB7 Latino (embed)",
+        quality: "HD",
+        language: "Latino",
+        url: embed,
+        headers: { "User-Agent": UA, Referer: embed }
+      });
+      return streams;
+    }
+    if (!streams.length) {
+      streams.push({
+        title: getServerLabel(embed) + " \xB7 Latino (embed)",
+        quality: "HD",
+        language: "Latino",
+        url: embed,
+        headers: { "User-Agent": UA, Referer: embed }
+      });
+    }
     return streams;
   });
 }
-function movieStreams(pageUrl) {
-  return fetchText(pageUrl, { headers: { Referer: SEARCH_URL + "/" } }).then(function(html) {
-    return resolveOptions(optionsFromPage(html));
-  }).catch(function() {
-    return [];
-  });
-}
-function episodeStreams(serieUrl, season, episode) {
-  return fetchText(serieUrl, { headers: { Referer: SEARCH_URL + "/" } }).then(function(html) {
-    var target = "-" + season + "x" + episode + "/";
-    var re = /href="([^"]*ver-el-episodio[^"]*)"/gi;
-    var m, epUrl = null;
-    while ((m = re.exec(html)) !== null) {
-      if (m[1].indexOf(target) !== -1) {
-        epUrl = m[1];
-        break;
+function urlReproducible(url, headers) {
+  return __async(this, null, function* () {
+    try {
+      var res = yield fetchWithTimeout(url, { headers }, 12e3);
+      if (!res.ok)
+        return false;
+      var ct = "";
+      try {
+        ct = String(res.headers && res.headers.get && res.headers.get("content-type") || "");
+      } catch (e) {
+        ct = "";
       }
-      if (!epUrl)
-        epUrl = m[1];
+      if (ct.indexOf("mpegurl") >= 0 || ct.indexOf("video/") >= 0 || ct.indexOf("octet-stream") >= 0)
+        return true;
+      var cuerpo = "";
+      try {
+        cuerpo = yield res.text();
+      } catch (e) {
+        return false;
+      }
+      return cuerpo.indexOf("#EXTM3U") >= 0;
+    } catch (e) {
+      return false;
     }
-    if (!epUrl)
-      return [];
-    return fetchText(epUrl, { headers: { Referer: serieUrl } });
-  }).then(function(html) {
-    if (!html)
-      return [];
-    return resolveOptions(optionsFromPage(html));
-  }).catch(function() {
-    return [];
   });
 }
+
+// src/cinecalidad/extractor.js
+var API = "https://tmdb.cinecalidad.am";
+var PLAYER = "https://vimeos.net/embed-%fileCode%.html";
 function extractStreams(tmdbId, mediaType, season, episode) {
-  var tmdbType = mediaType === "tv" || mediaType === "series" || mediaType === "anime" ? "tv" : "movie";
-  var wantTv = tmdbType === "tv";
-  return getMediaTitle(tmdbId, tmdbType).then(function(media) {
-    var queries = [];
-    if (media.originalTitle)
-      queries.push(media.originalTitle);
-    if (media.title && media.title !== media.originalTitle)
-      queries.push(media.title);
-    if (!queries.length)
-      return [];
-    var all = [];
-    var chain = Promise.resolve();
-    queries.forEach(function(q) {
-      chain = chain.then(function() {
-        return searchSite(q).then(function(c) {
-          all = all.concat(c);
-        });
-      });
-    });
-    return chain.then(function() {
-      var best = pickBest(all, media, wantTv, false);
-      if (!best)
-        best = pickBest(all, media, wantTv, true);
-      if (!best)
-        return [];
-      if (!wantTv)
-        return movieStreams(best.href);
-      return episodeStreams(best.href, parseInt(season, 10) || 1, parseInt(episode, 10) || 1);
-    });
-  }).catch(function(err) {
-    console.error("[CineCalidad] Error: " + (err && err.message ? err.message : err));
-    return [];
-  });
+  return extraerPortal(API, PLAYER, tmdbId, mediaType, season, episode);
 }
 
 // src/cinecalidad/index.js

@@ -1,136 +1,224 @@
-// Unlimplay — puerto a JS de lib/data/extractors/providers/unlimplay_extractor.dart
-// (el codigo Dart del repo del proyecto) al formato que ejecuta el motor de
-// MasterScrap: CommonJS `module.exports = { getStreams }`, solo fetch + RegExp.
+// Unlimplay — https://unlimplay.com (verificado 2026-09-24).
 //
-// El embed publica los servidores en dos bloques JSON del HTML:
-//   const EMBEDS = {...};              y   finalizePlayer({...});
-// Se fusionan ambos, se agrupan por idioma y se dejan los hosts reproducibles
-// (streamwish / vidhide / filelions), reescribiendo los dominios que ya rotaron.
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+// El sitio cambió de flujo: ya no existe /f/embed/… ni los bloques EMBEDS +
+// finalizePlayer del HTML. Ahora cada embed trae
+//   var LANGS = { latino: { servers: [ {link_name, server, link, play} ] }, es: …, sub: … }
+// donde `link` es un sobre cifrado del propio servidor, y el m3u8 se pide a su API:
+//   POST https://unlimplay.com/edge-data   (form-urlencoded, X-Requested-With: XMLHttpRequest)
+//     1) { action: 'token' }                                    -> { validtime, token }
+//     2) { streaming: <link>, validtime, token }                -> { codigo:200, url, original }
+// `url` viene cuando el sitio logró limpiar el m3u8; si no, `original` es el embed
+// real (p.ej. morencius.com/embed/<code>) y se emite tal cual. La API de unlimplay
+// falla de forma intermitente (504/timeouts): cada servidor se reintenta y el
+// token se refresca antes de resolver.
+var UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-// Igual que _allowed en el Dart: el resto son hosts muertos o sin player util.
-const PERMITIDOS = ["streamwish", "vidhide", "filelions"];
+var ORDEN_IDIOMAS = ['latino', 'es', 'sub', 'subtitulado', 'espanol', 'español'];
+var MAX_POR_IDIOMA = 4;
+var MAX_STREAMS = 10;
+var MAX_INTENTOS_SERVIDOR = 2;
 
-/** hglink.to y streamwish.to → vibuxer.com; filelions.to y minochinos.com → callistanise.com. */
-function rewriteHost(url) {
-  return String(url || "")
-    .replace(/^(https?:\/\/)(hglink\.to|streamwish\.to)(\/|$)/i, "$1vibuxer.com$3")
-    .replace(/^(https?:\/\/)(filelions\.to|minochinos\.com)(\/|$)/i, "$1callistanise.com$3");
+function idiomaDe(clave) {
+  var k = String(clave || '').toLowerCase();
+  if (k.indexOf('latino') >= 0 || k === 'lat' || k === 'mx') return 'Latino';
+  if (k.indexOf('sub') >= 0 || k === 'en' || k === 'english') return 'Subtitulado';
+  return 'Español';
 }
 
-function tryJson(raw) {
+function conTimeout(url, opts, ms) {
   try {
-    const d = JSON.parse(raw);
-    return d && typeof d === "object" ? d : null;
-  } catch (e) {
-    return null;
-  }
+    if (typeof AbortController !== 'undefined') {
+      var c = new AbortController();
+      if (c && c.signal !== null && c.signal !== undefined && typeof setTimeout !== 'undefined') {
+        setTimeout(function () {
+          try {
+            c.abort();
+          } catch (e) {}
+        }, ms);
+      }
+      if (c && c.signal !== undefined && c.signal !== null) {
+        opts = Object.assign({}, opts, { signal: c.signal });
+      }
+    }
+  } catch (e) {}
+  return fetch(url, opts);
 }
 
-/** es_MX | es_ES | en_US, como _langToCode. */
-function langToCode(lang) {
-  const l = String(lang || "").toLowerCase().trim();
-  if (l === "latino" || l === "lat" || l === "mx") return "es_MX";
-  if (l === "español" || l === "espanol" || l === "castellano" || l === "es") return "es_ES";
-  if (l.indexOf("sub") >= 0 || l === "english" || l === "en") return "en_US";
-  return "es_MX";
-}
-
-function idiomaDe(lang) {
-  const c = langToCode(lang);
-  if (c === "es_ES") return "Español";
-  if (c === "en_US") return "Subtitulado";
-  return "Latino";
-}
-
-/** Titulo del embed ("streamwish hd 2" → "Streamwish Hd 2"), como toModalMap. */
-function bonito(name) {
-  return String(name || "")
-    .split(" ")
-    .map(function (w) {
-      return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
-    })
-    .join(" ");
-}
-
-async function getStreams(tmdbId, mediaType, season, episode) {
-  const esPelicula = mediaType === "movie";
-  const embedUrl = esPelicula
-    ? "https://unlimplay.com/f/embed/movie/" + tmdbId
-    : "https://unlimplay.com/f/embed/tv/" + tmdbId + "/" + (season || 1) + "/" + (episode || 1);
-
-  const res = await fetch(embedUrl, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "es-ES,es;q=0.9",
-    },
-  });
-  if (!res.ok) return [];
-  const html = await res.text();
-  if (!html) return [];
-
-  const bloques = [];
-  const mEmbeds = html.match(/const\s+EMBEDS\s*=\s*(\{[\s\S]*?\});/);
-  if (mEmbeds) {
-    const d = tryJson(mEmbeds[1]);
-    if (d) bloques.push(d);
-  }
-  const mFinal = html.match(/finalizePlayer\s*\(\s*(\{[\s\S]*?\})\s*\)\s*;/);
-  if (mFinal) {
-    const d = tryJson(mFinal[1]);
-    if (d) bloques.push(d);
-  }
-  if (!bloques.length) return [];
-
-  // Fusion: idioma → { nombre: url }, sin repetir la misma url dos veces.
-  const merge = {};
-  for (let i = 0; i < bloques.length; i++) {
-    const bloque = bloques[i];
-    for (const lang of Object.keys(bloque || {})) {
-      const servers = bloque[lang];
-      if (!servers || typeof servers !== "object") continue;
-      if (!merge[lang]) merge[lang] = {};
-      const bucket = merge[lang];
-      for (const name of Object.keys(servers)) {
-        const u = String(servers[name] == null ? "" : servers[name]).trim();
-        if (!u) continue;
-        if (bucket[name] === u) continue;
-        if (Object.keys(bucket).some(function (k) { return bucket[k] === u; })) continue;
-        if (!(name in bucket)) {
-          bucket[name] = u;
-          continue;
+/** Extrae el objeto JSON que sigue a `var <nombre> = {` contando llaves. */
+function bloqueJson(html, nombre) {
+  var marca = html.indexOf('var ' + nombre);
+  if (marca < 0) marca = html.indexOf(nombre + ' = {');
+  if (marca < 0) return null;
+  var ini = html.indexOf('{', marca);
+  if (ini < 0) return null;
+  var nivel = 0;
+  var enTexto = false;
+  for (var i = ini; i < html.length; i++) {
+    var c = html.charAt(i);
+    if (enTexto) {
+      if (c === '\\') i++;
+      else if (c === '"') enTexto = false;
+      continue;
+    }
+    if (c === '"') {
+      enTexto = true;
+      continue;
+    }
+    if (c === '{') nivel++;
+    else if (c === '}') {
+      nivel--;
+      if (nivel === 0) {
+        try {
+          return JSON.parse(html.slice(ini, i + 1));
+        } catch (e) {
+          return null;
         }
-        let n = 2;
-        while (name + " " + n in bucket) n++;
-        bucket[name + " " + n] = u;
       }
     }
   }
+  return null;
+}
 
-  const orden = ["latino", "español", "espanol", "subtitulado"];
-  const idiomas = orden
-    .filter(function (k) { return k in merge; })
-    .concat(Object.keys(merge).filter(function (k) { return orden.indexOf(k.toLowerCase()) < 0; }));
+function captura(html, re) {
+  var m = html.match(re);
+  return m ? m[1] : '';
+}
 
-  const streams = [];
-  for (const lang of idiomas) {
-    const idioma = idiomaDe(lang);
-    const servidores = merge[lang] || {};
-    for (const name of Object.keys(servidores)) {
-      const base = name.toLowerCase().trim();
-      if (!PERMITIDOS.some(function (p) { return base.indexOf(p) === 0; })) continue;
-      streams.push({
-        title: bonito(name),
-        quality: "HD",
-        language: idioma,
-        url: rewriteHost(servidores[name]),
-        headers: { Referer: embedUrl + "/", "User-Agent": UA },
+function pageUrl(tmdbId, esPelicula, season, episode) {
+  if (esPelicula) return 'https://unlimplay.com/embed/movie/' + tmdbId;
+  return 'https://unlimplay.com/embed/tv/' + tmdbId + '/' + (season || 1) + '/' + (episode || 1);
+}
+
+function pedirEdge(page, datos) {
+  return conTimeout(
+    'https://unlimplay.com/edge-data',
+    {
+      method: 'POST',
+      headers: {
+        'User-Agent': UA,
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        Referer: page,
+        Origin: 'https://unlimplay.com',
+      },
+      body: new URLSearchParams(datos).toString(),
+    },
+    15000
+  )
+    .then(function (res) {
+      return res.text().then(function (t) {
+        try {
+          return JSON.parse(t);
+        } catch (e) {
+          return null;
+        }
       });
+    })
+    .catch(function () {
+      return null;
+    });
+}
+
+function tokenDe(html, page) {
+  var validtime = captura(html, /validtime:\s*"([^"]+)"/);
+  var token = captura(html, /token:\s*"([^"]+)"/);
+  return pedirEdge(page, { action: 'token' }).then(function (fresco) {
+    if (fresco && fresco.codigo === 200 && fresco.validtime && fresco.token) {
+      return { validtime: fresco.validtime, token: fresco.token };
     }
-  }
-  return streams;
+    if (token && validtime) return { validtime: validtime, token: token };
+    return null;
+  });
+}
+
+/** Resuelve un servidor (link cifrado -> url|original), con un reintento. */
+function resolverServidor(page, srv, tok, intento) {
+  if (!srv || !srv.link || !tok) return Promise.resolve(null);
+  var nombre = srv.link_name || srv.server || 'Servidor';
+  return pedirEdge(page, { streaming: srv.link, validtime: tok.validtime, token: tok.token }).then(function (res) {
+    var url = res && res.codigo === 200 ? res.url || res.original || '' : '';
+    if (url) return { url: url, nombre: nombre };
+    if (intento < MAX_INTENTOS_SERVIDOR) return resolverServidor(page, srv, tok, intento + 1);
+    return null;
+  });
+}
+
+function getStreams(tmdbId, mediaType, season, episode) {
+  var tipo = String(mediaType || '').toLowerCase();
+  var esPelicula = tipo === 'movie';
+  var page = pageUrl(tmdbId, esPelicula, parseInt(season, 10) || 1, parseInt(episode, 10) || 1);
+
+  return conTimeout(
+    page,
+    {
+      headers: {
+        'User-Agent': UA,
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'es-ES,es;q=0.9',
+      },
+    },
+    15000
+  )
+    .then(function (res) {
+      if (!res.ok) return [];
+      return res.text();
+    })
+    .then(function (html) {
+      if (!html) return [];
+      var langs = bloqueJson(html, 'LANGS');
+      if (!langs || !Object.keys(langs).length) return [];
+      return tokenDe(html, page).then(function (tok) {
+        if (!tok) return [];
+        var claves = ORDEN_IDIOMAS.filter(function (k) {
+          return langs[k];
+        }).concat(
+          Object.keys(langs).filter(function (k) {
+            return ORDEN_IDIOMAS.indexOf(k) < 0;
+          })
+        );
+
+        var streams = [];
+        var vistos = {};
+        var cadena = Promise.resolve();
+
+        for (var i = 0; i < claves.length; i++) {
+          (function (clave) {
+            var servidores = (langs[clave] && langs[clave].servers) || [];
+            var idioma = idiomaDe(clave);
+            for (var j = 0; j < servidores.length && j < MAX_POR_IDIOMA; j++) {
+              (function (srv) {
+                cadena = cadena
+                  .then(function () {
+                    if (streams.length >= MAX_STREAMS) return null;
+                    return resolverServidor(page, srv, tok, 0);
+                  })
+                  .then(function (r) {
+                    if (!r || !r.url || vistos[r.url]) return;
+                    vistos[r.url] = true;
+                    streams.push({
+                      title: r.nombre + ' · ' + idioma,
+                      quality: 'HD',
+                      language: idioma,
+                      url: r.url,
+                      headers: { Referer: page, 'User-Agent': UA },
+                    });
+                  })
+                  .catch(function () {});
+              })(servidores[j]);
+            }
+          })(claves[i]);
+        }
+
+        return cadena.then(function () {
+          return streams;
+        });
+      });
+    })
+    .catch(function () {
+      return [];
+    });
 }
 
 module.exports = { getStreams };

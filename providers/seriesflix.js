@@ -84,12 +84,10 @@ if (typeof Promise.any !== "function") {
   Promise.any = function (list) {
     return new Promise(function (resolve, reject) {
       var items = Array.prototype.slice.call(list || []);
-      var errores = [];
       var pendientes = items.length;
       if (!pendientes) return reject(new Error("All promises were rejected"));
       items.forEach(function (p, i) {
-        Promise.resolve(p).then(resolve, function (e) {
-          errores[i] = e;
+        Promise.resolve(p).then(resolve, function () {
           if (--pendientes === 0) reject(new Error("All promises were rejected"));
         });
       });
@@ -110,200 +108,625 @@ if (typeof Promise.allSettled !== "function") {
   };
 }
 
-var x = Object.defineProperty;
-var R = Object.getOwnPropertyDescriptor;
-var b = Object.getOwnPropertyNames, y = Object.getOwnPropertySymbols;
-var N = Object.prototype.hasOwnProperty, F = Object.prototype.propertyIsEnumerable;
-var S = (n, e, t) => e in n ? x(n, e, { enumerable: true, configurable: true, writable: true, value: t }) : n[e] = t, U = (n, e) => {
-  for (var t in e || (e = {}))
-    N.call(e, t) && S(n, t, e[t]);
-  if (y)
-    for (var t of y(e))
-      F.call(e, t) && S(n, t, e[t]);
-  return n;
-};
-var H = (n, e) => {
-  for (var t in e)
-    x(n, t, { get: e[t], enumerable: true });
-}, M = (n, e, t, l) => {
-  if (e && typeof e == "object" || typeof e == "function")
-    for (let r of b(e))
-      !N.call(n, r) && r !== t && x(n, r, { get: () => e[r], enumerable: !(l = R(e, r)) || l.enumerable });
-  return n;
-};
-var D = (n) => M(x({}, "__esModule", { value: true }), n);
-var d = (n, e, t) => new Promise((l, r) => {
-  var o = (a) => {
-    try {
-      i(t.next(a));
-    } catch (c) {
-      r(c);
-    }
-  }, s = (a) => {
-    try {
-      i(t.throw(a));
-    } catch (c) {
-      r(c);
-    }
-  }, i = (a) => a.done ? l(a.value) : Promise.resolve(a.value).then(o, s);
-  i((t = t.apply(n, e)).next());
-});
-var K = {};
-H(K, { getStreams: () => q });
-module.exports = D(K);
-var k = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-function L(n, e) {
+// ─────────────────────────────────────────────────────────────────────────────
+// SeriesFlixHD — https://seriesflixhd.team  (antes seriesflixhd.best, que ahora
+// responde 301 hacia el dominio nuevo)
+//
+//   búsqueda : /buscar/<titulo>
+//   serie    : /serie/<slug>/                 (slug = titulo + sufijo aleatorio, p.ej. the-boys-zbqm)
+//   temporada: /temporada/<slug>-<N>/
+//   episodio : /episodio/<slug>-<S>x<E>/      (p.ej. /episodio/the-boys-zbqm-3x1/)
+//
+// Cada episodio lista idiomas (LATINO / CASTELLANO / SUBTITULADO) con <div data-url="<base64>">
+// que decodifican a reproductores:
+//   - https://nupload.my/watch/<id>            -> mirror propio (sv4.ibra.lat/*.m3u8)
+//   - https://nupload.my/iframe/?url=<voe url> -> voe.sx (o jamesbornmain.com)
+// ─────────────────────────────────────────────────────────────────────────────
+
+var SITE = "https://seriesflixhd.team";
+var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+var PRESUPUESTO_MS = 40000;
+var MAX_EMBEDS_POR_IDIOMA = 4;
+var IDIOMAS = ["Latino", "Castellano", "Subtitulado", "Espa\u00f1ol", "Ingl\u00e9s"];
+
+function limit() {
+  return Date.now() + PRESUPUESTO_MS;
+}
+
+function enc(s) {
+  try {
+    if (typeof encodeURIComponent === "function") return encodeURIComponent(String(s));
+  } catch (e) {}
+  return String(s).replace(/ /g, "%20");
+}
+
+function dec(s) {
+  try {
+    if (typeof decodeURIComponent === "function") return decodeURIComponent(String(s));
+  } catch (e) {}
+  return String(s);
+}
+
+function uaHeaders(extra) {
+  var h = { "User-Agent": UA };
+  if (extra) for (var k in extra) h[k] = extra[k];
+  return h;
+}
+
+function fetchText(url, headers) {
+  return fetch(url, { headers: headers || uaHeaders(), redirect: "follow" }).then(function (res) {
+    if (!res.ok) throw new Error("HTTP " + res.status + " :: " + url);
+    return res.text();
+  });
+}
+
+function unescapeHtml(s) {
+  var map = { "&amp;": "&", "&quot;": '"', "&#039;": "'", "&#39;": "'", "&apos;": "'", "&lt;": "<", "&gt;": ">", "&nbsp;": " " };
+  return String(s == null ? "" : s).replace(/&(amp|quot|#0?39|apos|lt|gt|nbsp);/g, function (x) {
+    return map[x] || x;
+  });
+}
+
+// Normaliza un titulo a slug (el mismo que usa el sitio en /serie/ y /episodio/)
+function slugify(n) {
+  return String(n == null ? "" : n)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, "y")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function calidad(n, e) {
   return n >= 3840 || e >= 2160 ? "4K" : n >= 1920 || e >= 1080 ? "1080p" : n >= 1280 || e >= 720 ? "720p" : n >= 854 || e >= 480 ? "480p" : "360p";
 }
-function A(t) {
-  return d(this, arguments, function* (n, e = {}) {
-    try {
-      let r = yield (yield fetch(n, { headers: U({ "User-Agent": k }, e), redirect: "follow" })).text();
-      if (!r.includes("#EXT-X-STREAM-INF")) {
-        let i = n.match(/[_-](\d{3,4})p/);
-        return i ? `${i[1]}p` : "Unknown";
+
+function esM3u8(texto) {
+  return texto && texto.indexOf("#EXTM3U") >= 0;
+}
+
+function pareceMuerto(texto) {
+  if (!texto) return false;
+  var t = texto.toLowerCase();
+  return t.indexOf("dmca") >= 0 || t.indexOf("deleted") >= 0 || t.indexOf("not found") >= 0 || t.indexOf("no encontrado") >= 0;
+}
+
+// Calidad a partir del .m3u8 (RESOLUTION=) o del nombre de la URL. Devuelve null si el
+// fichero esta claramente borrado (asi el idioma siguiente puede tomar el relevo).
+function inspeccionarHls(url, headers) {
+  var porNombre = function (u) {
+    var m = String(u || "").match(/[_-](\d{3,4})p/);
+    return m ? m[1] + "p" : null;
+  };
+  return fetch(url, { headers: headers || uaHeaders(), redirect: "follow" })
+    .then(function (res) {
+      return res.text().then(function (txt) {
+        if (res.status >= 400) return { vivo: false, calidad: null, final: url };
+        if (esM3u8(txt)) {
+          if (txt.indexOf("#EXT-X-STREAM-INF") < 0) return { vivo: true, calidad: porNombre(url) || "HD", final: url };
+          var w = 0, h = 0, s, re = /RESOLUTION=(\d+)x(\d+)/g;
+          while ((s = re.exec(txt)) !== null) {
+            var alto = parseInt(s[2], 10);
+            if (alto > h) { h = alto; w = parseInt(s[1], 10); }
+          }
+          return { vivo: true, calidad: h > 0 ? calidad(w, h) : porNombre(url) || "HD", final: url };
+        }
+        if (pareceMuerto(txt)) return { vivo: false, calidad: null, final: url };
+        return { vivo: true, calidad: porNombre(url) || "HD", final: url };
+      });
+    })
+    .catch(function () {
+      return { vivo: true, calidad: porNombre(url) || "HD", final: url };
+    });
+}
+
+// ── TMDB ────────────────────────────────────────────────────────────────────
+// Ojo: se usa res.text() + JSON.parse en vez de res.json() para que funcione en
+// cualquier runtime (el sandbox QuickJS de Nuvio expone text() de forma fiable).
+function tmdbJson(url) {
+  return fetch(url)
+    .then(function (r) {
+      return r.ok === false ? null : r.text();
+    })
+    .then(function (raw) {
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        return null;
       }
-      let o = 0, s = 0;
-      for (let i of r.split(`
-`)) {
-        let a = i.match(/RESOLUTION=(\d+)x(\d+)/);
-        if (a) {
-          let c = parseInt(a[2]);
-          c > s && (s = c, o = parseInt(a[1]));
+    })
+    .catch(function () {
+      return null;
+    });
+}
+
+function infoTmdb(tmdbId) {
+  return Promise.all(
+    ["es-ES", "es-MX", "en-US"].map(function (lang) {
+      return tmdbJson("https://api.themoviedb.org/3/tv/" + tmdbId + "?api_key=" + TMDB_KEY + "&language=" + lang);
+    })
+  ).then(function (res) {
+    var es = res[0], mx = res[1], en = res[2];
+    var tituloEs = es ? (es.name || es.title) : null;
+    var base = mx && !/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(mx.name || mx.title || "") ? mx : en;
+    if (!base) base = es;
+    if (!base) return null;
+    var info = {
+      title: base.name || base.title || "",
+      originalTitle: base.original_name || base.original_title || "",
+      titleEs: tituloEs || "",
+      year: String(base.first_air_date || base.release_date || "").substring(0, 4),
+    };
+    console.log('[SeriesFlixHD] TMDB: "' + info.title + '" (' + info.year + ")");
+    return info;
+  });
+}
+
+// ── Búsqueda ────────────────────────────────────────────────────────────────
+function buscarTitulo(titulo) {
+  var url = SITE + "/buscar/" + enc(titulo);
+  return fetchText(url, uaHeaders({ Accept: "text/html" }))
+    .then(function (html) {
+      var out = [];
+      var re = /<a href="(\/serie\/[^"]+)"[\s\S]{0,400}?<h2 class="Title">([\s\S]*?)<\/h2>/g;
+      var m;
+      while ((m = re.exec(html)) !== null) {
+        out.push({
+          slug: m[1].replace(/^\/serie\//, "").replace(/\/+$/, ""),
+          name: unescapeHtml(m[2].replace(/<[^>]*>/g, "")).trim(),
+        });
+      }
+      console.log('[SeriesFlixHD] buscar "' + titulo + '": ' + out.length + " candidatos");
+      return out;
+    })
+    .catch(function () {
+      return [];
+    });
+}
+
+function puntuar(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1000;
+  var at = a.split("-");
+  var bt = b.split("-");
+  var hit = 0;
+  for (var i = 0; i < at.length; i++) {
+    if (at[i].length > 1 && bt.indexOf(at[i]) >= 0) hit++;
+  }
+  var s = hit * 20 - Math.abs(bt.length - at.length);
+  if (b.indexOf(a) === 0 || a.indexOf(b) === 0) s += 30;
+  return s;
+}
+
+function elegirSerie(candidatos, titulos) {
+  var mejor = null;
+  var mejorP = 19;
+  for (var i = 0; i < candidatos.length; i++) {
+    var candidato = candidatos[i];
+    for (var j = 0; j < titulos.length; j++) {
+      var p = puntuar(slugify(titulos[j]), slugify(candidato.name || candidato.slug));
+      if (p > mejorP) {
+        mejorP = p;
+        mejor = candidato;
+      }
+    }
+  }
+  if (mejor) console.log('[SeriesFlixHD] serie elegida: /serie/' + mejor.slug + "/ (" + mejor.name + ") p=" + mejorP);
+  return mejor;
+}
+
+// ── URL del episodio: /temporada/<slug>-<N>/ -> /episodio/<slug>-<S>x<E>/ ────
+function episodioEnTemporada(slugSerie, s, e) {
+  var url = SITE + "/temporada/" + slugSerie + "-" + s + "/";
+  return fetchText(url, uaHeaders({ Accept: "text/html" }))
+    .then(function (html) {
+      var links = [];
+      var re = /href="([^"]*\/episodio\/[^"]*)"/g;
+      var m;
+      while ((m = re.exec(html)) !== null) {
+        var u = m[1];
+        if (links.indexOf(u) < 0) links.push(u);
+      }
+      var objetivo = new RegExp("-" + s + "x" + e + "/?$");
+      for (var i = 0; i < links.length; i++) {
+        if (objetivo.test(links[i])) {
+          return links[i].indexOf("http") === 0 ? links[i] : SITE + (links[i].charAt(0) === "/" ? "" : "/") + links[i];
         }
       }
-      return s > 0 ? L(o, s) : "Unknown";
-    } catch (l) {
-      return "Unknown";
-    }
-  });
-}
-var E = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", _ = "https://nupload.me";
-function z(n, e) {
-  return d(this, null, function* () {
-    if (typeof XMLHttpRequest != "undefined")
-      return new Promise((t, l) => {
-        let r = new XMLHttpRequest();
-        r.open("GET", n), r.responseType = "text";
-        for (let [o, s] of Object.entries(e))
-          r.setRequestHeader(o, s);
-        r.onload = () => {
-          t(r.responseURL || n);
-        }, r.onerror = () => l(new Error("Network error via XHR")), r.send();
-      });
-    {
-      let t = yield fetch(n, { headers: e, redirect: "follow" });
-      if (!t.ok)
-        throw new Error(`HTTP ${t.status} al seguir redirecci\xF3n`);
-      return t.url;
-    }
-  });
-}
-function T(n) {
-  return d(this, null, function* () {
-    var e;
-    try {
-      console.log(`[Nupload] Resolviendo: ${n}`);
-      let t = yield fetch(n, { headers: { "User-Agent": E, Referer: _ + "/" } }), l = yield t.text();
-      if (!t.ok)
-        throw new Error(`HTTP ${t.status} al cargar el embed`);
-      let r = l.match(/([A-Za-z]+)\.forEach\s*\(function\s+\w+\s*\(value\)\s*\{[^}]+atob/);
-      if (!r)
-        return console.log("[Nupload] No se encontr\xF3 patr\xF3n de ofuscaci\xF3n ni iframe."), null;
-      let o = r[1], s = l.match(new RegExp(o + "\\.forEach[^-]+-\\s*(\\d+)"));
-      if (!s)
-        return console.log("[Nupload] No se pudo extraer el offset num\xE9rico"), null;
-      let i = parseInt(s[1]), a = l.match(new RegExp("var\\s+" + o + "\\s*=\\s*(\\[[^\\]]+\\])"));
-      if (!a)
-        return console.log("[Nupload] No se encontr\xF3 el array de valores ofuscados"), null;
-      let c = JSON.parse(a[1]), u = "";
-      c.forEach((w) => {
-        u += String.fromCharCode(parseInt(atob(w).replace(/\D/g, "")) - i);
-      });
-      let h = (e = l.match(/var sesz\s*=\s*"([^"]+)"/)) == null ? void 0 : e[1];
-      if (!h)
-        return console.log("[Nupload] No se encontr\xF3 el token sesz"), null;
-      let v = u + "?s=" + h;
-      console.log("[Nupload] Siguiendo redirecci\xF3n de la URL construida...");
-      let f = yield z(v, { "User-Agent": E }), g = { "User-Agent": E, Referer: "https://nupload.me/", Origin: "https://nupload.me" }, $ = yield A(f, { Referer: "https://nupload.me/", "User-Agent": E });
-      return console.log("[Nupload] Quality detectada:", $), console.log(`[Nupload] URL encontrada (${$}): ${f.substring(0, 80)}...`), { url: f, quality: $, headers: g };
-    } catch (t) {
-      return console.log(`[Nupload] Error: ${t.message}`), null;
-    }
-  });
-}
-var I = "439c478a771f35c05022f9feabcca01c", P = "https://seriesflixhd.best", W = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-function m(n) {
-  return n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "y").replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-}
-function B(n, e) {
-  return d(this, null, function* () {
-    let [t, l, r] = yield Promise.all(["es-ES", "es-MX", "en-US"].map((u) => fetch(`https://api.themoviedb.org/3/${e}/${n}?api_key=${I}&language=${u}`).then((h) => h.json()).catch(() => null))), o = t ? e === "movie" ? t.title : t.name : null, s = l && !/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(e === "movie" ? l.title : l.name) ? l : r;
-    if (!s)
       return null;
-    let i = e === "movie" ? s.title : s.name, a = e === "movie" ? s.original_title : s.original_name, c = (s.release_date || s.first_air_date || "").substring(0, 4);
-    return console.log(`[SeriesFlixHD] TMDB: "${i}" (${c})`), { title: i, originalTitle: a, year: c, titleEs: o };
+    })
+    .catch(function () {
+      return null;
+    });
+}
+
+// Candidatos directos: el sitio redirige (301) /episodio/<slug-sin-sufijo>-SxE/ al canonical
+function candidatosDirectos(titulos, slugSerie, s, e) {
+  var out = [];
+  var add = function (slug) {
+    if (!slug) return;
+    var u = SITE + "/episodio/" + slug + "-" + s + "x" + e + "/";
+    if (out.indexOf(u) < 0) out.push(u);
+  };
+  add(slugSerie);
+  for (var i = 0; i < titulos.length; i++) add(slugify(titulos[i]));
+  return out;
+}
+
+function cargarEpisodio(url) {
+  return fetchText(url, uaHeaders({ Accept: "text/html" }))
+    .then(function (html) {
+      if (!html || html.indexOf("data-url") < 0) return { url: url, html: null };
+      return { url: url, html: html };
+    })
+    .catch(function () {
+      return { url: url, html: null };
+    });
+}
+
+function resolverEpisodio(titulos, slugSerie, s, e, fin) {
+  var candidatos = candidatosDirectos(titulos, slugSerie, s, e);
+  if (Date.now() > fin) return Promise.resolve(null);
+  return Promise.all(candidatos.map(cargarEpisodio)).then(function (res) {
+    for (var i = 0; i < res.length; i++) {
+      if (res[i] && res[i].html) {
+        console.log("[SeriesFlixHD] \u2713 episodio: " + res[i].url);
+        return res[i];
+      }
+    }
+    return null;
   });
 }
-function C(n) {
-  return d(this, null, function* () {
-    let e = `${P}/episodio/${n}`;
-    try {
-      let t = yield fetch(e, { headers: { "User-Agent": W, Accept: "text/html" } });
-      return t.ok ? yield t.text() : null;
-    } catch (t) {
-      return console.log(`[SeriesFlixHD] fetch error: ${t.message}`), null;
-    }
-  });
-}
-function O(n) {
-  let e = { latino: [], castellano: [] }, t = n.match(/LATINO[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/), l = n.match(/CASTELLANO[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/), r = (o) => o ? [...o.matchAll(/data-url="([^"]+)"/g)].map((s) => {
-    try {
-      return atob(s[1]);
-    } catch (i) {
-      return console.log(`[SeriesFlixHD] Error decodificando base64: ${i.message}`), null;
-    }
-  }).filter(Boolean).filter((s) => s.includes("nupload.me/watch/")) : [];
-  return e.latino = r(t == null ? void 0 : t[1]), e.castellano = r(l == null ? void 0 : l[1]), e;
-}
-function q(n, e, t, l) {
-  return d(this, null, function* () {
-    if (e = String(e || "").toLowerCase(), e === "series" || e === "anime")
-      e = "tv";
-    if (!n || e !== "tv")
-      return [];
-    let r = Date.now();
-    console.log(`[SeriesFlixHD] Buscando: TMDB ${n} S${t}E${l}`);
-    try {
-      let o = yield B(n, e);
-      if (!o)
-        return [];
-      let s = String(l), i = parseInt(t), a = [];
-      o.title && (a.push(`${m(o.title)}-${i}x${s}`), a.push(`${m(o.title)}-${o.year}-${i}x${s}`)), o.originalTitle && o.originalTitle !== o.title && (a.push(`${m(o.originalTitle)}-${i}x${s}`), a.push(`${m(o.originalTitle)}-${o.year}-${i}x${s}`)), o.titleEs && o.titleEs !== o.title && (a.push(`${m(o.titleEs)}-${i}x${s}`), a.push(`${m(o.titleEs)}-${o.year}-${i}x${s}`));
-      let c = null;
+
+// ── Parseo de idiomas + data-url ────────────────────────────────────────────
+function parsearSecciones(html) {
+  var out = {};
+  var orden = [];
+  var re = /<span>([^<]{2,25})<span>Idioma<\/span><\/span>([\s\S]*?)<\/ul>/g;
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    var etiqueta = unescapeHtml(m[1].replace(/<[^>]*>/g, "")).trim();
+    var clave = etiqueta.toUpperCase();
+    var nombre = clave.indexOf("CASTELLANO") >= 0 ? "Castellano"
+      : clave.indexOf("SUBTIT") >= 0 ? "Subtitulado"
+      : clave.indexOf("LATINO") >= 0 ? "Latino"
+      : etiqueta;
+    var links = [];
+    var reUrl = /data-url="([^"]+)"/g;
+    var x;
+    while ((x = reUrl.exec(m[2])) !== null) {
+      var url = null;
       try {
-        c = yield Promise.any(a.map((f) => C(f).then((g) => {
-          if (!g || !g.includes("data-url"))
-            throw new Error("not found");
-          return console.log("[SeriesFlixHD] \u2713 Slug encontrado"), g;
-        })));
-      } catch (f) {
-        c = null;
+        url = atob(x[1]);
+      } catch (err) {
+        url = null;
       }
-      let u = O(c);
-      console.log(`[SeriesFlixHD] Latino: ${u.latino.length} | Castellano: ${u.castellano.length}`);
-      let h = [];
-      for (let [f, g] of [[u.latino, "Latino"], [u.castellano, "Castellano"]]) {
-        if (f.length === 0)
-          continue;
-        let w = (yield Promise.allSettled(f.map((p) => T(p)))).filter((p) => p.status === "fulfilled" && p.value).map((p, X) => ({ name: "SeriesFlixHD", title: `${p.value.quality} \xB7 ${g} \xB7 Nupload`, url: p.value.url, quality: p.value.quality, headers: p.value.headers }));
-        if (h.push(...w), w.length > 0)
-          break;
-      }
-      let v = ((Date.now() - r) / 1e3).toFixed(2);
-      return console.log(`[SeriesFlixHD] \u2713 ${h.length} streams en ${v}s`), h;
-    } catch (o) {
-      return console.log(`[SeriesFlixHD] Error: ${o.message}`), [];
+      if (url && url.indexOf("http") === 0 && links.indexOf(url) < 0) links.push(url);
     }
+    if (!links.length) continue;
+    if (!out[nombre]) {
+      out[nombre] = links;
+      orden.push(nombre);
+    } else {
+      for (var i = 0; i < links.length; i++) if (out[nombre].indexOf(links[i]) < 0) out[nombre].push(links[i]);
+    }
+  }
+  if (!orden.length) {
+    // Estructura cambiada: usar todos los data-url de la pagina como idioma unico
+    var todos = [];
+    var reAll = /data-url="([^"]+)"/g;
+    var y;
+    while ((y = reAll.exec(html)) !== null) {
+      var u = null;
+      try {
+        u = atob(y[1]);
+      } catch (err) {
+        u = null;
+      }
+      if (u && u.indexOf("http") === 0 && todos.indexOf(u) < 0) todos.push(u);
+    }
+    if (todos.length) {
+      out["Latino"] = todos;
+      orden.push("Latino");
+    }
+  }
+  return { mapa: out, orden: orden };
+}
+
+// ── Resolvers ───────────────────────────────────────────────────────────────
+function base64Voe(input) {
+  var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+  var str = String(input).replace(/=+$/, "");
+  var output = "";
+  if (str.length % 4 === 1) return "";
+  for (var i = 0, bc = 0, bs = 0; i < str.length; i++) {
+    var indice = chars.indexOf(str.charAt(i));
+    if (indice === -1) continue;
+    bs = bc % 4 ? bs * 64 + indice : indice;
+    if (bc++ % 4) output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
+  }
+  return output;
+}
+
+function rot13(str) {
+  return String(str).replace(/[A-Za-z]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) + (c.toUpperCase() <= "M" ? 13 : -13));
   });
 }
+
+function patronesVoe(str) {
+  var res = String(str);
+  var patrones = ["@$", "^^", "~@", "%?", "*~", "!!", "#&"];
+  for (var i = 0; i < patrones.length; i++) res = res.split(patrones[i]).join("_");
+  return res;
+}
+
+function descifrarVoe(encoded) {
+  try {
+    var s = rot13(encoded);
+    s = patronesVoe(s);
+    s = s.split("_").join("");
+    var d = base64Voe(s);
+    if (!d) return null;
+    d = d.split("").map(function (c) { return String.fromCharCode(c.charCodeAt(0) - 3); }).join("");
+    d = d.split("").reverse().join("");
+    d = base64Voe(d);
+    if (!d) return null;
+    return JSON.parse(d);
+  } catch (e) {
+    return null;
+  }
+}
+
+function resolverVoe(embedUrl) {
+  var headers = uaHeaders({ Referer: embedUrl });
+  var analizar = function (html) {
+    var json = html.match(/<script[^>]*type=['"]application\/json['"][^>]*>\s*\[\s*"([^"]+)"\s*\]\s*<\/script>/i);
+    if (!json) {
+      var directos = [];
+      var re1 = /(?:mp4|hls)['"]\s*:\s*['"]([^'"]+)['"]/gi;
+      var m;
+      while ((m = re1.exec(html)) !== null) {
+        var u = m[1];
+        if (u.indexOf("aHR0") === 0) {
+          try { u = base64Voe(u) || u; } catch (e) {}
+        }
+        if (u.indexOf("http") === 0) directos.push(u);
+      }
+      if (!directos.length) return Promise.resolve(null);
+      return inspeccionarHls(directos[0], headers).then(function (info) {
+        if (!info.vivo) return null;
+        return { url: directos[0], quality: info.calidad, headers: headers, host: "Voe" };
+      });
+    }
+    var dec = descifrarVoe(json[1]);
+    if (!dec) return Promise.resolve(null);
+    var url = dec.source || dec.direct_access_url;
+    if (!url) return Promise.resolve(null);
+    var clave = dec.file_code ? "voe:" + dec.file_code : null;
+    return inspeccionarHls(url, headers).then(function (info) {
+      if (!info.vivo) {
+        console.log("[SeriesFlixHD] voe sin fichero vivo: " + url.substring(0, 70));
+        return null;
+      }
+      return { url: url, quality: info.calidad, headers: headers, host: "Voe", clave: clave };
+    });
+  };
+  return fetchText(embedUrl, headers)
+    .then(function (html) {
+      if (/permanentToken/i.test(html)) {
+        var m = html.match(/window\.location\.href\s*=\s*'([^']+)'/i);
+        if (m) {
+          var destino = m[1];
+          console.log("[SeriesFlixHD] voe redirect -> " + destino.substring(0, 80));
+          return fetchText(destino, uaHeaders({ Referer: embedUrl })).then(analizar);
+        }
+      }
+      return analizar(html);
+    })
+    .catch(function (e) {
+      console.log("[SeriesFlixHD] voe error: " + e.message);
+      return null;
+    });
+}
+
+function resolverNupload(url) {
+  var host = (url.match(/^https?:\/\/[^\/]+/) || ["https://nupload.my"])[0];
+  var headers = uaHeaders({ Referer: host + "/" });
+  return fetchText(url, headers)
+    .then(function (html) {
+      // Variante actual: la pagina solo envuelve un iframe de voe
+      var iframe = html.match(/<iframe[^>]+src=["']([^"']*(?:voe\.sx|jamesbornmain\.com)[^"']*)["']/i);
+      if (iframe) {
+        var voe = iframe[1].indexOf("//") === 0 ? "https:" + iframe[1] : iframe[1];
+        console.log("[SeriesFlixHD] nupload -> iframe " + voe.substring(0, 70));
+        return resolverVoe(voe);
+      }
+      // Variante clasica: array ofuscado + sesz -> sv4.ibra.lat/?s=<token>
+      var f = html.match(/([A-Za-z]+)\.forEach\s*\(\s*function\s*\w*\s*\([^)]*\)\s*\{[^}]+atob/);
+      if (!f) {
+        console.log("[SeriesFlixHD] nupload sin patron conocido (" + html.length + " bytes)");
+        return null;
+      }
+      var nombre = f[1];
+      var off = html.match(new RegExp(nombre + "\\.forEach[^-]+-\\s*(\\d+)"));
+      var arr = html.match(new RegExp("var\\s+" + nombre + "\\s*=\\s*(\\[[^\\]]+\\])"));
+      var sesz = html.match(/var sesz\s*=\s*"([^"]+)"/);
+      if (!off || !arr || !sesz) return null;
+      var offset = parseInt(off[1], 10);
+      var valores;
+      try {
+        valores = JSON.parse(arr[1]);
+      } catch (e) {
+        return null;
+      }
+      var construida = "";
+      valores.forEach(function (v) {
+        var digitos = atob(v).replace(/\D/g, "");
+        if (digitos) construida += String.fromCharCode(parseInt(digitos, 10) - offset);
+      });
+      if (construida.indexOf("http") !== 0) return null;
+      var final = construida + "?s=" + sesz[1];
+      return fetch(final, { headers: headers, redirect: "follow" })
+        .then(function (res) {
+          var real = res && res.url ? res.url : final;
+          var url = /\.m3u8/.test(real) ? real : final;
+          return inspeccionarHls(url, headers).then(function (info) {
+            if (!info.vivo) {
+              console.log("[SeriesFlixHD] nupload sin fichero vivo: " + url.substring(0, 70));
+              return null;
+            }
+            return { url: url, quality: info.calidad, headers: headers, host: "Nupload" };
+          });
+        })
+        .catch(function () {
+          return null;
+        });
+    })
+    .catch(function (e) {
+      console.log("[SeriesFlixHD] nupload error: " + e.message);
+      return null;
+    });
+}
+
+function resolverEmbed(embedUrl) {
+  try {
+    if (/nupload\.(my|me)\/iframe\/\?url=/i.test(embedUrl)) {
+      var interno = dec(embedUrl.split("url=")[1] || "");
+      if (interno.indexOf("//") === 0) interno = "https:" + interno;
+      if (!interno || interno.indexOf("http") !== 0) return Promise.resolve(null);
+      return resolverVoe(interno);
+    }
+    if (/voe\.sx\/e\//i.test(embedUrl) || /jamesbornmain\.com\/e\//i.test(embedUrl)) return resolverVoe(embedUrl);
+    if (/nupload\.(my|me)\/watch\//i.test(embedUrl)) return resolverNupload(embedUrl);
+  } catch (e) {
+    console.log("[SeriesFlixHD] embed raro: " + e.message);
+  }
+  return Promise.resolve(null);
+}
+
+function streamsDeIdioma(links, idioma) {
+  var lote = links.slice(0, MAX_EMBEDS_POR_IDIOMA);
+  return Promise.allSettled(lote.map(resolverEmbed)).then(function (res) {
+    var out = [];
+    var vistos = {};
+    for (var i = 0; i < res.length; i++) {
+      if (!res[i] || res[i].status !== "fulfilled" || !res[i].value) continue;
+      var v = res[i].value;
+      if (!v.url) continue;
+      var clave = v.clave || v.url;
+      if (vistos[clave]) continue;
+      vistos[clave] = true;
+      out.push({
+        name: "SeriesFlixHD",
+        title: (v.quality || "HD") + " \u00B7 " + idioma + " \u00B7 " + (v.host || "Embed"),
+        language: idioma,
+        quality: v.quality || "HD",
+        url: v.url,
+        headers: v.headers,
+      });
+    }
+    return out;
+  });
+}
+
+// ── API ─────────────────────────────────────────────────────────────────────
+function getStreams(tmdbId, mediaType, season, episode) {
+  var tipo = String(mediaType || "").toLowerCase();
+  if (tipo === "series" || tipo === "anime") tipo = "tv";
+  if (!tmdbId || tipo !== "tv") return Promise.resolve([]);
+
+  var s = parseInt(season, 10);
+  var e = parseInt(episode, 10);
+  if (!s || !e) return Promise.resolve([]);
+
+  var t0 = Date.now();
+  var fin = limit();
+  console.log("[SeriesFlixHD] Buscando: TMDB " + tmdbId + " S" + s + "E" + e);
+
+  return infoTmdb(tmdbId)
+    .then(function (info) {
+      if (!info) return [];
+      var titulos = [];
+      [info.title, info.originalTitle, info.titleEs].forEach(function (t) {
+        if (t && titulos.indexOf(t) < 0) titulos.push(t);
+      });
+      var slugSerie = null;
+      var busqueda = titulos.length
+        ? titleBuscar(titulos, fin)
+        : Promise.resolve(null);
+      return busqueda.then(function (slug) {
+        slugSerie = slug;
+        if (slug && Date.now() < fin) {
+          return episodioEnTemporada(slug, s, e).then(function (directo) {
+            if (!directo) return null;
+            return cargarEpisodio(directo).then(function (pagina) {
+              if (pagina && pagina.html) return pagina;
+              return resolverEpisodio(titulos, slugSerie, s, e, fin);
+            });
+          });
+        }
+        return resolverEpisodio(titulos, slugSerie, s, e, fin);
+      });
+    })
+    .then(function (pagina) {
+      if (!pagina || !pagina.html) {
+        console.log("[SeriesFlixHD] sin pagina de episodio");
+        return [];
+      }
+      var sec = parsearSecciones(pagina.html);
+      console.log("[SeriesFlixHD] idiomas: " + sec.orden.map(function (k) { return k + "=" + sec.mapa[k].length; }).join(" "));
+      if (!sec.orden.length) return [];
+
+      var orden = [];
+      for (var i = 0; i < IDIOMAS.length; i++) if (sec.mapa[IDIOMAS[i]]) orden.push(IDIOMAS[i]);
+      for (var j = 0; j < sec.orden.length; j++) if (orden.indexOf(sec.orden[j]) < 0) orden.push(sec.orden[j]);
+
+      var acumulado = [];
+      var i2 = 0;
+      var paso = function () {
+        if (i2 >= orden.length) return Promise.resolve(acumulado);
+        var idioma = orden[i2++];
+        if (!sec.mapa[idioma] || !sec.mapa[idioma].length) return paso();
+        return streamsDeIdioma(sec.mapa[idioma], idioma).then(function (streams) {
+          if (streams.length) {
+            for (var k = 0; k < streams.length; k++) acumulado.push(streams[k]);
+            return acumulado;
+          }
+          return paso();
+        });
+      };
+      return paso();
+    })
+    .then(function (streams) {
+      var seg = ((Date.now() - t0) / 1000).toFixed(2);
+      console.log("[SeriesFlixHD] \u2713 " + streams.length + " streams en " + seg + "s");
+      return streams;
+    })
+    .catch(function (err) {
+      console.log("[SeriesFlixHD] Error: " + (err && err.message ? err.message : err));
+      return [];
+    });
+}
+
+function titleBuscar(titulos, fin) {
+  var i = 0;
+  var encontrado = null;
+  var paso = function () {
+    if (encontrado || i >= titulos.length || i >= 2 || Date.now() > fin) return Promise.resolve(encontrado);
+    var titulo = titulos[i++];
+    return buscarTitulo(titulo).then(function (candidatos) {
+      var elegida = elegirSerie(candidatos, titulos);
+      if (elegida) encontrado = elegida.slug;
+      return encontrado ? encontrado : paso();
+    });
+  };
+  return paso();
+}
+
+module.exports = { getStreams: getStreams };

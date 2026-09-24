@@ -1,6 +1,6 @@
 {
   "name": "Masters Repo",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "scrapers": [
     {
       "id": "masters",
@@ -26,7 +26,7 @@
     {
       "id": "pelisplusto",
       "name": "Pelisplusto",
-      "description": "Películas en latino desde PelisPlusHD (vía uqlink + hosts directos).",
+      "description": "Películas y series en latino desde PelisPlusHD (vía uqlink + hosts directos). Verificado 2026-09-24 en QuickJS: Dune2 6, The Boys S3E1 2, Breaking Bad S1E1 2.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -68,15 +68,15 @@
     {
       "id": "cinecalidad",
       "name": "CineCalidad",
-      "description": "DESHABILITADO 2026-09-23: cinecalidad.ec/.to sin respuesta. Películas y series en latino desde CineCalidad.",
-      "version": "1.0.0",
+      "description": "Reescrito 2026-09-24: cinecalidad.ec redirige (301) a cinecalidad.am, que ya no es el portal scrapeable (/ver-pelicula/, data-option) sino la misma SPA con API propia que lamovie.org (tmdb.cinecalidad.am/v1) y player vimeos.net/embed-%fileCode%.html. Verificado en Node y QuickJS: Dune2 1, The Boys S3E1 1, Breaking Bad S1E1 1.",
+      "version": "2.0.0",
       "author": "Masters",
       "supportedTypes": [
         "movie",
         "tv"
       ],
       "filename": "providers/cinecalidad.js",
-      "enabled": false,
+      "enabled": true,
       "formats": [
         "m3u8",
         "mp4"
@@ -193,7 +193,7 @@
     {
       "id": "vidsrc",
       "name": "VidSrc",
-      "description": "Verificado 2026-09-23: Dune2 2, Breaking Bad S1E1 2 (EN).",
+      "description": "Verificado 2026-09-24: Dune2 2, The Boys S3E1 2, Breaking Bad S1E1 2 (EN). Fix: comparaba mediaType contra 'tv', así que Nuvio ('series') pedía /embed/movie/<id> — ahora series va a /embed/tv/<id>/<s>-<e>.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -214,8 +214,8 @@
     {
       "id": "latanime",
       "name": "Latanime (solo Latino)",
-      "description": "Anime SOLO en latino de latanime.org: descarta las entradas 'castellano' del sitio y confirma el idioma en el <title> cuando el slug no lo dice. Verificado 2026-09-23 en Node y QuickJS (runtime de Nuvio): Kaiju No. 8 S2E1 7 streams, S1E1 6, Solo Leveling S1E1 6, Jujutsu Kaisen S1E1 5, Dragon Ball Daima S1E1 7; y 0 en la entrada que el sitio publica solo en castellano (Narumi no Heijitsu) y en mediaType movie. Resuelve voe.sx/cloudwindow, uqload, filemoon, lulu, dood, ok.ru y yourupload; el resto de servidores (hexload, savefiles, mp4upload, mixdrop, listeamed, vide0, mega) se emiten como embed porque no tienen resolución estática.",
-      "version": "1.0.0",
+      "description": "Anime SOLO en latino de latanime.org (estricto desde 2026-09-24): descarta cualquier entrada 'castellano' y exige que el slug o el <title> de la página confirmen latino; ya no se cae a las entradas sin idioma marcado. Fix: el buscador del sitio es literal, así que un título pegado de TMDB ('BLUELOCK') no encontraba nada — ahora se prueban prefijos y el scoring compara también sin espacios. Verificado en Node y QuickJS (2026-09-24): Demon Slayer, Attack on Titan, One Piece, My Hero Academia, Chainsaw Man, Spy×Family, Dragon Ball Daima, BLUELOCK, One Punch Man, Death Note, Frieren, Dan Da Dan, Sakamoto Days, Hunter x Hunter, Tokyo Revengers (7-8 streams cada uno); 0 en la entrada que el sitio solo publica en castellano (Narumi no Heijitsu) y 0 en mediaType movie. Resuelve voe.sx/cloudwindow, uqload, filemoon, lulu, dood, ok.ru y yourupload; el resto (hexload, savefiles, mp4upload, mixdrop, listeamed, vide0, mega) se emiten como embed.",
+      "version": "1.1.0",
       "author": "Masters",
       "supportedTypes": [
         "tv"
@@ -381,8 +381,8 @@
     {
       "id": "unlimplay",
       "name": "Unlimplay",
-      "description": "Verificado 2026-09-23 en QuickJS: Dune2 9, The Boys S3E1 2 (streamwish/vidhide/filelions desde el embed).",
-      "version": "1.0.0",
+      "description": "Actualizado 2026-09-24 al flujo nuevo del sitio: el embed vive en /embed/{movie|tv}/… y publica var LANGS (link cifrado por servidor); se pide POST /edge-data {action:'token'} para el token fresco y luego {streaming, validtime, token}, que devuelve el m3u8 limpio o el embed real (url|original). El backend de unlimplay responde 504/timeouts de forma intermitente, así que el provider reintenta por servidor y devuelve [] si no hay nada. Estado: verificado en QuickJS con Dune2 9 y The Boys S3E1 2 el 2026-09-23 (flujo viejo); el 2026-09-24 el sitio quedó intermitentemente inaccesible y no se pudo re-verificar de punta a punta.",
+      "version": "2.0.0",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -402,19 +402,19 @@
     {
       "id": "seriesflix",
       "name": "SeriesFlixHD",
-      "description": "DESHABILITADO 2026-09-23: carga en QuickJS (fix mediaType series->tv + polyfills atob/matchAll/normalize/Promise.any) pero seriesflixhd.best responde 200 y no devuelve episodios (0 streams, The Boys S3E1).",
+      "description": "Series en latino. Reactivado 2026-09-24: seriesflixhd.best redirige a seriesflixhd.team, que sí devuelve episodios (The Boys S3E1 2, Breaking Bad S1E1 2). Antes: cargaba en QuickJS pero el dominio viejo respondía 200 sin episodios.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
         "tv"
       ],
       "filename": "providers/seriesflix.js",
-      "enabled": false,
+      "enabled": true,
       "formats": [
         "m3u8",
         "mp4"
       ],
-      "logo": "https://www.google.com/s2/favicons?domain=seriesflixhd.best&sz=128",
+      "logo": "https://www.google.com/s2/favicons?domain=seriesflixhd.team&sz=128",
       "contentLanguage": [
         "es"
       ]
@@ -422,15 +422,15 @@
     {
       "id": "lamovie",
       "name": "LaMovie",
-      "description": "DESHABILITADO 2026-09-23: lamovie.org devuelve 503 y el provider no encuentra slugs (0 streams, Dune2).",
-      "version": "1.0.0",
+      "description": "Reescrito 2026-09-24: lamovie.org ya no es un portal scrapeable sino una SPA con API propia indexada por TMDB (tmdb.lamovie.org/v1) y player vimeos.net/embed-%fileCode%.html. El provider pide el code por TMDB (sin búsqueda ni matching) y verifica el m3u8 antes de emitirlo; si la firma del CDN viene mala, reintenta y si no, emite el embed. Verificado en Node y QuickJS: Dune2 1, The Boys S3E1 1, Breaking Bad S1E1 1.",
+      "version": "2.0.0",
       "author": "Masters",
       "supportedTypes": [
         "movie",
         "tv"
       ],
       "filename": "providers/lamovie.js",
-      "enabled": false,
+      "enabled": true,
       "formats": [
         "m3u8",
         "mp4"

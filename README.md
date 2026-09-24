@@ -37,36 +37,62 @@ module.exports = { getStreams };
 
 ## Providers
 
-23 entradas en `manifest.json` (23 archivos en `providers/`, ninguno huérfano), 15 activas.
+23 entradas en `manifest.json` (23 archivos en `providers/`, ninguno huérfano).
 
-| id | archivo | estado | última verificación (2026-09-23) |
+| id | archivo | estado | última verificación (2026-09-24) |
 |----|---------|--------|----------------------------------|
 | pelisplusto | `providers/pelisplusto.js` | activo | latino desde PelisPlusHD vía uqlink + hosts directos |
-| cuevana | `providers/cuevana.js` | activo | Dune2 3 |
-| embed69 | `providers/embed69.js` | activo | Dune2 6 m3u8 directos, Breaking Bad S1E1 4 |
-| poseidon | `providers/poseidon.js` | activo | Dune2 8 embeds, GoT S1E1 3 |
-| tioplus | `providers/tioplus.js` | activo | Dune2 4, Breaking Bad S1E1 9 |
-| vidsrc | `providers/vidsrc.js` | activo | Dune2 2, Breaking Bad S1E1 2 (EN) |
+| cuevana | `providers/cuevana.js` | activo | Dune2 3, The Boys S3E1 1 |
+| embed69 | `providers/embed69.js` | activo | Dune2 6 m3u8 directos, Breaking Bad S1E1 2 |
+| poseidon | `providers/poseidon.js` | activo | Dune2 8 embeds, The Boys S3E1 9 (QuickJS: los 8 llegan desde que el arnés devuelve promesas de verdad) |
+| tioplus | `providers/tioplus.js` | activo | Dune2 4, The Boys S3E1 8 |
+| vidsrc | `providers/vidsrc.js` | activo | Dune2 2, The Boys S3E1 2 (EN). Fix: comparaba el mediaType contra `"tv"`, así que Nuvio (`series`) pedía `/embed/movie/<id>`; ahora series va a `/embed/tv/<id>/<s>-<e>` |
 | cinesrc | `providers/cinesrc.js` | activo (solo embed) | Dune2 1, The Boys S3E1 1 — emite el embed oficial con los parámetros de `/docs`; el m3u8 no se puede resolver (barrera proof-of-work con WASM, fuera del alcance de QuickJS) |
-| latanime | `providers/latanime.js` | activo (solo latino) | Kaiju No. 8 S2E1 7, S1E1 6; Solo Leveling S1E1 6; Jujutsu Kaisen S1E1 5; Dragon Ball Daima S1E1 7; 0 en lo que el sitio solo tiene en castellano |
-| pelisplus | `providers/pelisplus.js` | activo | Dune2 1, GoT S1E1 1 |
-| pelispedia | `providers/pelispedia.js` | activo | Dune2 3 (fastream m3u8), Breaking Bad S1E1 2 |
-| seriesmetro | `providers/seriesmetro.js` | activo | Dune2 3, Breaking Bad S1E1 2 |
-| seriesmetro_kl | `providers/seriesmetro_kl.js` | activo | Dune2 1, GoT S1E1 1 |
-| smartpelis | `providers/smartpelis.js` | activo | Dune2 3, Breaking Bad S1E1 2 |
+| latanime | `providers/latanime.js` | activo (solo latino, estricto) | 2026-09-24: 15 animes seguidos con streams (Demon Slayer, Attack on Titan, One Piece, My Hero Academia, Chainsaw Man, Spy×Family, Dragon Ball Daima, BLUELOCK, One Punch Man, Death Note, Frieren, Dan Da Dan, Sakamoto Days, Hunter x Hunter, Tokyo Revengers); 0 en lo que el sitio solo publica en castellano. Solo emite entradas cuyo slug o `<title>` confirman latino |
+| pelisplus | `providers/pelisplus.js` | activo | Dune2 1, The Boys S3E1 1 |
+| pelispedia | `providers/pelispedia.js` | activo | Dune2 3 (fastream m3u8), The Boys S3E1 3 |
+| seriesmetro | `providers/seriesmetro.js` | activo | Dune2 3, The Boys S3E1 3. Fix 2026-09-24: sus streams iban sin `Accept` y el CDN de fastream responde 403 al m3u8 — se añade `Accept`/`Accept-Language` (igual que pelispedia) |
+| seriesmetro_kl | `providers/seriesmetro_kl.js` | activo | Dune2 1, GoT S1E1 1. Fix 2026-09-24: el bundle usaba `String.normalize`, `matchAll` y `URLSearchParams` sin polyfill, así que en QuickJS moría antes de buscar; se le añaden los polyfills y el `language` del stream |
+| smartpelis | `providers/smartpelis.js` | activo | Dune2 3, The Boys S3E1 3 (mismo fix de `Accept` que seriesmetro) |
 | fuegocine | `providers/fuegocine.js` | activo | scrape del sitio (Blogger, `_SV_LINKS` del post): Dune2 4, Deadpool y Wolverine 5, IntensaMente 2 2, Reacher S2E3 3, The Boys S3E1 3 |
-| unlimplay | `providers/unlimplay.js` | activo | QuickJS OK: Dune2 9, The Boys S3E1 2 (streamwish/vidhide/filelions) |
-| seriesflix | `providers/seriesflix.js` | **off** | corregido para cargar (series→tv + polyfills) pero seriesflixhd.best no devuelve episodios |
-| lamovie | `providers/lamovie.js` | **off** | lamovie.org devuelve 503 |
-| cinecalidad_kl | `providers/cinecalidad_kl.js` | **off** | cinecalidad.vg devuelve 503 |
-| detodopeliculas | `providers/detodopeliculas.js` | **off** | detodopeliculas.nu sin respuesta; usa crypto-js + Buffer |
-| masters | `providers/masters.js` | **off** | gnulahd.nu / ww3 devuelven 502 |
-| fanpelis | `providers/fanpelis.js` | **off** | fanpelis.to no responde (timeout) |
-| cinecalidad | `providers/cinecalidad.js` | **off** | cinecalidad.ec/.to sin respuesta |
-| lacartoons | `providers/lacartoons.js` | **off** | lacartoons.com con timeout (0 bytes) |
+| unlimplay | `providers/unlimplay.js` | activo (sitio inestable) | flujo nuevo del sitio (`/embed/…` + `var LANGS` + `POST /edge-data` con token fresco). El backend responde 504/timeouts de forma intermitente: el 2026-09-24 la web quedó colgada y no se pudo re-verificar |
+| lamovie | `providers/lamovie.js` | activo (reescrito) | lamovie.org ya no es un portal scrapeable: SPA + API propia por TMDB (`tmdb.lamovie.org/v1`) y player `vimeos.net/embed-%fileCode%.html`. Dune2 1, The Boys S3E1 1, Breaking Bad S1E1 1 (Node y QuickJS) |
+| cinecalidad | `providers/cinecalidad.js` | activo (reescrito) | cinecalidad.ec → **cinecalidad.am** (301) con la misma plataforma que lamovie (`tmdb.cinecalidad.am/v1` + vimeos). Dune2 1, The Boys S3E1 1, Breaking Bad S1E1 1 |
+| seriesflix | `providers/seriesflix.js` | **off** | seriesflixhd.best redirige a seriesflixhd.team; pendiente de re-verificar |
+| cinecalidad_kl | `providers/cinecalidad_kl.js` | **off** | cinecalidad.vg no responde (timeout, comprobado 2026-09-24) |
+| detodopeliculas | `providers/detodopeliculas.js` | **off** | detodopeliculas.nu devuelve 522 (comprobado 2026-09-24); usa crypto-js + Buffer |
+| masters | `providers/masters.js` | **off** | gnulahd.nu devuelve 502 (comprobado 2026-09-24) |
+| fanpelis | `providers/fanpelis.js` | **off** | fanpelis.to devuelve 522 (comprobado 2026-09-24) |
+| lacartoons | `providers/lacartoons.js` | **off** | lacartoons.com devuelve 522 (comprobado 2026-09-24) |
 
 Los `enabled: false` quedan en el manifiesto **con la causa**: así Nuvio los lista y se ve por qué
 están apagados, en vez de desaparecer del repo sin explicación.
+
+## Velocidad
+
+El reproductor espera a que cada provider conteste: lo que manda es la latencia del provider más
+lento, no la media. Reglas que ya están aplicadas:
+
+- **Fases en tandas paralelas.** Todo lo que pruebe varios candidatos, servidores o embeds va en
+  paralelo acotado (6 candidatos a la vez, 4 embeds a la vez) respetando el orden de preferencia.
+  Secuencial, el tiempo total era la *suma* de las latencias.
+- **Timeout de 12 s por petición** (`src/shared/http.js`): antes 20 s, y un host colgado se comía
+  el turno entero.
+- **Salida temprana** donde ya existía (primer acierto gana) no se toca.
+
+Medido en QuickJS (Dune 2, esta máquina, incluye el arranque de node):
+
+| provider | antes | ahora |
+|----------|-------|-------|
+| pelispedia | ~10,5 s | **6,6 s** |
+| seriesmetro | ~8,8 s | **5,0 s** |
+| smartpelis | ~9,1 s | **5,0 s** |
+| unlimplay (sitio caído) | colgado hasta el corte | **0,6 s** con `[]` |
+| resto | 0,9 – 5,3 s | igual |
+
+Ideas que quedan sobre la mesa (no aplicadas): cachear en memoria las fichas de TMDB cuando el
+runtime reutilice la instancia, y un **presupuesto de tiempo** por provider (devolver lo ya
+resuelto al pasar X ms con al menos un stream en la mano) para no esperar al último embed.
 
 ## Arreglar o agregar un provider
 

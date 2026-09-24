@@ -463,6 +463,7 @@ async function scrapePage(html, pageUrl, isMovie) {
     /<div[^>]*\bid=["'](options?-\d+|video-\d+|opt-\d+)["'][^>]*>([\s\S]*?)<\/div>/gi;
   const seenIds = {};
   let m;
+  const pendientes = [];
   while ((m = blockRe.exec(html)) !== null) {
     const id = String(m[1] || "").trim();
     const block = m[2] || "";
@@ -476,17 +477,66 @@ async function scrapePage(html, pageUrl, isMovie) {
     if (!iframeSrc) continue;
 
     const info = buttons[id];
-    const language = info ? info.language : "Desconocido";
-    const option = info && info.option != null ? info.option : optionFromId(id);
+    pendientes.push({
+      language: info ? info.language : "Desconocido",
+      option: info && info.option != null ? info.option : optionFromId(id),
+      iframeSrc: iframeSrc,
+    });
+  }
 
-    const resolved = await resolveEmbed(iframeSrc, pageUrl);
+  // Los embeds se resuelven EN PARALELO (antes uno detrás de otro: el tiempo total
+  // era la suma de las latencias de todos los servidores). Máximo LIMITE a la vez.
+  const LIMITE = 4;
+  const resueltos = new Array(pendientes.length);
+  let siguiente = 0;
+  const obreros = [];
+  for (let w = 0; w < Math.min(LIMITE, pendientes.length); w++) {
+    obreros.push(
+      (async () => {
+        for (;;) {
+          const idx = siguiente++;
+          if (idx >= pendientes.length) return;
+          try {
+            resueltos[idx] = await resolveEmbed(pendientes[idx].iframeSrc, pageUrl);
+          } catch (err) {
+            resueltos[idx] = null;
+          }
+        }
+      })()
+    );
+  }
+  // Presupuesto de tiempo: si ya hay al menos un servidor resuelto y pasa el plazo, se
+  // devuelve lo que haya en vez de esperar al embed que esté colgado (un host muerto
+  // tarda el timeout completo de 12 s y bloqueaba la respuesta entera).
+  const PRESUPUESTO = 5000;
+  const esperas = [Promise.all(obreros)];
+  if (typeof setTimeout === "function") {
+    esperas.push(
+      new Promise(function (res) {
+        var t0 = Date.now();
+        function mirar() {
+          var listos = 0;
+          for (var i = 0; i < resueltos.length; i++) {
+            if (resueltos[i] && resueltos[i].url) listos++;
+          }
+          if (listos > 0 && Date.now() - t0 > PRESUPUESTO) return res();
+          setTimeout(mirar, 250);
+        }
+        mirar();
+      })
+    );
+  }
+  await Promise.race(esperas);
+
+  for (let i = 0; i < pendientes.length; i++) {
+    const resolved = resueltos[i];
     if (!resolved || !resolved.url) continue;
     if (seenUrls[resolved.url]) continue;
     seenUrls[resolved.url] = true;
 
     result.push({
-      option: option,
-      language: language,
+      option: pendientes[i].option,
+      language: pendientes[i].language,
       url: resolved.url,
       quality: resolved.quality || "HD",
       headers: resolved.headers || mediaHeaders(pageUrl),
@@ -543,12 +593,24 @@ async function extractStreams(tmdbId, mediaType, season, episode) {
 
   let pageUrl = null;
   let html = null;
-  for (var i = 0; i < candidates.length; i++) {
-    const got = await fetchText(candidates[i], null, PAGE_TIMEOUT);
-    if (got && got.indexOf("aa-options") !== -1) {
-      pageUrl = candidates[i];
-      html = got;
-      break;
+  // Se prueban los candidatos de a TANDA en paralelo (antes uno detrás de otro: el
+  // tiempo era la suma de todas las latencias) y se respeta el orden de preferencia.
+  const TANDA = 6;
+  for (var i = 0; i < candidates.length && !html; i += TANDA) {
+    const tanda = candidates.slice(i, i + TANDA);
+    const paginas = await Promise.all(
+      tanda.map(function (u) {
+        return fetchText(u, null, PAGE_TIMEOUT).catch(function () {
+          return null;
+        });
+      })
+    );
+    for (var k = 0; k < tanda.length; k++) {
+      if (paginas[k] && paginas[k].indexOf("aa-options") !== -1) {
+        pageUrl = tanda[k];
+        html = paginas[k];
+        break;
+      }
     }
   }
   if (!html) return [];

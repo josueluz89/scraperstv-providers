@@ -1,6 +1,6 @@
 /**
  * cuevana - Built from src/cuevana/
- * Generated: 2026-09-23T17:03:40.303Z
+ * Generated: 2026-09-24T05:33:42.870Z
  */
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -43,7 +43,7 @@ var __async = (__this, __arguments, generator) => {
 };
 
 // src/shared/http.js
-var FETCH_TIMEOUT = 2e4;
+var FETCH_TIMEOUT = 12e3;
 function fetchWithTimeout(url, options, timeout) {
   if (!options)
     options = {};

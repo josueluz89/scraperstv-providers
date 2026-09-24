@@ -1,8 +1,11 @@
 import { fetchText, fetchJson } from '../shared/http.js';
 import { getEmbedResolver, mapDomain } from '../shared/embedResolvers.js';
+import { decodeEmbed69Page, resolveHostStream, familyOf } from './embed69.js';
 
 const TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
 const MAIN_URL = 'https://pelisplushd.bz';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const RESOLVE_TIMEOUT = 15000;
 
 var ACCENT_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o' };
 function stripAccents(s) {
@@ -168,11 +171,10 @@ function getServersFromDetail(html) {
 }
 
 function unwrapEmbed69(src) {
-  // PelisPlusHD routes most servers through embed69. The /f/ and /video/ pages
-  // are PoW/bot protected and cannot be scraped server-side, but uqlink.php
-  // unwraps to the direct host iframe which our resolvers handle.
+  // Rutas viejas de PelisPlusHD (uqlink.php) desenvuelven a un iframe directo.
+  // Hoy el sitio usa /f/<imdb_id>/ (pagina cifrada, ver decodeEmbed69Page).
   if (src.indexOf('embed69.org/uqlink.php') === -1) return Promise.resolve(null);
-  return fetchText(src, { headers: { Referer: MAIN_URL + '/' } })
+  return fetchText(src, { headers: { Referer: MAIN_URL + '/', 'User-Agent': UA } }, RESOLVE_TIMEOUT)
     .then(function(html) {
       var m = html.match(/<iframe\b[^>]*src="([^"]+)"[^>]*>/i);
       if (!m) return null;
@@ -183,30 +185,106 @@ function unwrapEmbed69(src) {
     .catch(function() { return null; });
 }
 
-function resolveServers(servers) {
-  var streams = [];
-  var promises = servers.map(function(s) {
-    return unwrapEmbed69(s.src).then(function(unwrapped) {
-      var target = unwrapped || s.src;
-      // Skip PoW-protected embed69 pages with no direct host.
-      if (target.indexOf('embed69.org/') !== -1) return null;
-      var fixedUrl = mapDomain(target);
-      var resolver = getEmbedResolver(fixedUrl);
-      if (!resolver) return null;
-      return resolver(fixedUrl).then(function(result) {
-        if (result && result.url) {
-          streams.push({
-            name: 'Pelisplusto (' + s.label + ')',
-            title: (result.quality || 'HD') + ' · LAT · ' + s.label,
-            url: result.url,
-            quality: result.quality || 'HD',
-            headers: result.headers,
-          });
-        }
-      }).catch(function() {});
+function originOfUrl(url) {
+  var m = String(url || '').match(/^(https?:\/\/[^\/]+)/i);
+  return m ? m[1] : '';
+}
+
+function makeStream(serverLabel, language, resolucion, fallbackUrl, fallbackHeaders) {
+  var url = (resolucion && resolucion.url) || fallbackUrl;
+  if (!url) return null;
+  var quality = (resolucion && resolucion.quality) || 'HD';
+  var headers = (resolucion && resolucion.headers) || fallbackHeaders;
+  return {
+    title: quality + ' · ' + language + ' · ' + serverLabel,
+    quality: quality,
+    language: language,
+    url: url,
+    headers: headers,
+  };
+}
+
+// Host directo (sin embed69 de por medio) resuelto con los resolvers compartidos.
+function resolveDirect(src, serverLabel) {
+  var fixed = mapDomain(src);
+  var resolver = getEmbedResolver(fixed);
+  if (!resolver) return Promise.resolve(null);
+  var origin = originOfUrl(fixed);
+  return resolver(fixed)
+    .then(function(result) {
+      return makeStream(serverLabel, 'Latino', result, null, { Referer: origin + '/', 'User-Agent': UA });
+    })
+    .catch(function() { return null; });
+}
+
+// Entrada descifrada de embed69 -> stream publicable. Si el .m3u8 no se puede
+// resolver, se entrega el propio embed con sus cabeceras (igual que hace el
+// provider embed69) para que la app lo resuelva por su relay.
+function streamFromEntry(entry) {
+  var fam = familyOf(entry.servidor, entry.url);
+  var serverLabel = entry.servidor ? entry.servidor.charAt(0).toUpperCase() + entry.servidor.slice(1) : 'Embed';
+  var prom;
+  if (fam) {
+    prom = resolveHostStream(entry.url, fam, RESOLVE_TIMEOUT);
+  } else {
+    var fixed = mapDomain(entry.url);
+    var resolver = getEmbedResolver(fixed);
+    prom = resolver ? resolver(fixed) : Promise.resolve(null);
+  }
+  var origin = originOfUrl(entry.url);
+  var fallbackHeaders = { Referer: origin + '/', Origin: 'https://embed69.org', 'User-Agent': UA };
+  return prom
+    .catch(function() { return null; })
+    .then(function(res) {
+      return makeStream(serverLabel, entry.language, res, entry.url, fallbackHeaders);
     });
+}
+
+// Pagina embed69.org/f/<id>/: trae `dataLink` cifrado (PoW + AES-256-CBC).
+function resolveEmbed69(src) {
+  return fetchText(src, {
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: MAIN_URL + '/',
+      Origin: 'https://embed69.org',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+      'User-Agent': UA,
+    },
+  }, RESOLVE_TIMEOUT)
+    .then(function(html) { return decodeEmbed69Page(html); })
+    .then(function(entries) {
+      if (!entries.length) return [];
+      return Promise.all(entries.map(function(e) { return streamFromEntry(e); }));
+    })
+    .catch(function() { return []; });
+}
+
+function resolveServers(servers) {
+  var promises = servers.map(function(s) {
+    var src = s.src;
+    if (src.indexOf('embed69.org/uqlink.php') !== -1) {
+      return unwrapEmbed69(src).then(function(unwrapped) {
+        if (!unwrapped) return [];
+        return resolveDirect(unwrapped, s.label).then(function(st) { return st ? [st] : []; });
+      });
+    }
+    if (src.indexOf('embed69.org/') !== -1) return resolveEmbed69(src);
+    return resolveDirect(src, s.label).then(function(st) { return st ? [st] : []; });
   });
-  return Promise.all(promises).then(function() { return streams; });
+  return Promise.all(promises).then(function(lists) {
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < lists.length; i++) {
+      var list = lists[i] || [];
+      for (var j = 0; j < list.length; j++) {
+        var st = list[j];
+        if (!st || !st.url || seen[st.url]) continue;
+        seen[st.url] = true;
+        out.push(st);
+      }
+    }
+    return out;
+  });
 }
 
 function getMovieStreams(slug) {
@@ -217,15 +295,33 @@ function getMovieStreams(slug) {
     .catch(function() { return []; });
 }
 
+// El href de la temporada se busca por segmento exacto: el regex anterior
+// capturaba la comilla de cierre dentro de la URL (`href=".../capitulo/1"` ->
+// `...1"\n class=`), así que el fetch del episodio daba 500.
+function findEpisodeUrl(html, season, episode) {
+  var needle = '/temporada/' + season + '/capitulo/' + episode;
+  var re = /href="([^"]+)"/gi;
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    var href = m[1];
+    var i = href.indexOf(needle);
+    if (i === -1) continue;
+    var next = href.charAt(i + needle.length);
+    if (next !== '' && next !== '/' && next !== '?' && next !== '#') continue;
+    if (href.indexOf('/serie/') === -1 && href.indexOf('/anime/') === -1) continue;
+    return href;
+  }
+  return null;
+}
+
 function getEpisodeStreams(slug, season, episode) {
   var basePath = slug.indexOf('anime/') === 0
     ? MAIN_URL + '/' + slug
     : MAIN_URL + '/serie/' + slug;
   return fetchText(basePath)
     .then(function(html) {
-      var epRegex = new RegExp('<a\\b[^>]*href="([^"]*\\/temporada\\/' + season + '\\/capitulo\\/' + episode + '(?:\\/|"|\\?)[^"]*)"[^>]*>', 'i');
-      var m = epRegex.exec(html);
-      var epUrl = m ? m[1] : (basePath + '/temporada/' + season + '/capitulo/' + episode);
+      var epUrl = findEpisodeUrl(html, season, episode);
+      if (!epUrl) epUrl = basePath + '/temporada/' + season + '/capitulo/' + episode;
       if (epUrl.indexOf('http') !== 0) epUrl = MAIN_URL + (epUrl.charAt(0) === '/' ? '' : '/') + epUrl;
       return fetchText(epUrl);
     })
