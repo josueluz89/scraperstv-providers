@@ -94,6 +94,22 @@ Ideas que quedan sobre la mesa (no aplicadas): cachear en memoria las fichas de 
 runtime reutilice la instancia, y un **presupuesto de tiempo** por provider (devolver lo ya
 resuelto al pasar X ms con al menos un stream en la mano) para no esperar al último embed.
 
+### Descargar el repo no es el cuello de botella (medido 2026-09-24)
+
+El repo completo (manifest + 18 providers activos) son 468 KB, **131 KB con gzip**. Medido desde
+esta máquina, bajando todo en paralelo como hace un cliente:
+
+| origen | frío | caliente |
+|--------|------|----------|
+| `raw.githubusercontent.com/.../main/...` | 860 ms | **166 ms** |
+| `cdn.jsdelivr.net/gh/...@main/...` | 20 s (3 archivos fallaron) | 11,4 s |
+| `cdn.jsdelivr.net/gh/...@<commit o tag>/...` | 0,8 s por archivo | **0,07 s** por archivo (cache 7 días) |
+
+O sea: `raw` (lo que usa la app) ya responde en décimas de segundo y sin fallos; jsDelivr **solo**
+conviene si se fija una versión inmutable (`@vX.Y.Z` o `@<sha>`), porque `@main` obliga a
+revalidar en el edge y salió 100 veces más lento. Lo que tarda de verdad son los providers
+scrapeando (1–7 s), no la descarga.
+
 ## Arreglar o agregar un provider
 
 1. **Mapear la cadena con datos reales** (curl/node, nunca adivinar el markup):
