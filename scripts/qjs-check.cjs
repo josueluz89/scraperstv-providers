@@ -33,6 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const ctx = QuickJS.newContext();
   let abiertos = 0;
   const fetchLog = [];
+  const timers = [];
 
   // ── console ─────────────────────────────────────────────────────────────
   const mkLog = (level) => ctx.newFunction(level, (...args) => {
@@ -84,11 +85,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   ctx.setProp(ctx.global, 'fetch', fetchFn);
 
+  // ── timers de verdad (no se esperan desde el host, como en Nuvio) ────────
+  // Un setTimeout inmediato rompe a los providers que usan Promise.race para
+  // acotar su tiempo: la carrera se resolvería con [] al instante. Aquí el
+  // callback se agenda en el event loop del host y se ejecuta cuando toca.
+  const hostSetTimeout = ctx.newFunction('__hostSetTimeout', (fnHandle, msHandle) => {
+    const ms = msHandle && msHandle.value ? ctx.dump(msHandle) : 0;
+    const fn = fnHandle.dup();
+    timers.push(fn);
+    setTimeout(function () {
+      try {
+        ctx.callFunction(fn, ctx.undefined);
+      } catch (e) {
+        /* callback roto: se ignora */
+      }
+    }, ms > 0 ? ms : 0);
+    return ctx.newNumber(timers.length);
+  });
+  ctx.setProp(ctx.global, '__hostSetTimeout', hostSetTimeout);
+
   // ── sandbox "pelado": nada de lo que Nuvio no tiene ─────────────────────
   ctx.unwrapResult(ctx.evalCode(`
     delete String.prototype.normalize;
     delete String.prototype.matchAll;
-    globalThis.setTimeout = function (fn) { try { fn(); } catch (e) {} return 0; };
+    globalThis.setTimeout = function (fn, ms) { return globalThis.__hostSetTimeout(fn, ms || 0); };
     globalThis.clearTimeout = function () {};
     globalThis.setInterval = function () { return 0; };
     globalThis.clearInterval = function () {};

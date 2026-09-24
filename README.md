@@ -37,7 +37,7 @@ module.exports = { getStreams };
 
 ## Providers
 
-22 entradas en `manifest.json` (22 archivos en `providers/`, ninguno huérfano), 14 activas.
+23 entradas en `manifest.json` (23 archivos en `providers/`, ninguno huérfano), 15 activas.
 
 | id | archivo | estado | última verificación (2026-09-23) |
 |----|---------|--------|----------------------------------|
@@ -48,6 +48,7 @@ module.exports = { getStreams };
 | tioplus | `providers/tioplus.js` | activo | Dune2 4, Breaking Bad S1E1 9 |
 | vidsrc | `providers/vidsrc.js` | activo | Dune2 2, Breaking Bad S1E1 2 (EN) |
 | cinesrc | `providers/cinesrc.js` | activo (solo embed) | Dune2 1, The Boys S3E1 1 — emite el embed oficial con los parámetros de `/docs`; el m3u8 no se puede resolver (barrera proof-of-work con WASM, fuera del alcance de QuickJS) |
+| latanime | `providers/latanime.js` | activo (solo latino) | Kaiju No. 8 S2E1 7, S1E1 6; Solo Leveling S1E1 6; Jujutsu Kaisen S1E1 5; Dragon Ball Daima S1E1 7; 0 en lo que el sitio solo tiene en castellano |
 | pelisplus | `providers/pelisplus.js` | activo | Dune2 1, GoT S1E1 1 |
 | pelispedia | `providers/pelispedia.js` | activo | Dune2 3 (fastream m3u8), Breaking Bad S1E1 2 |
 | seriesmetro | `providers/seriesmetro.js` | activo | Dune2 3, Breaking Bad S1E1 2 |

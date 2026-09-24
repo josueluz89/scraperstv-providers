@@ -212,6 +212,26 @@
       ]
     },
     {
+      "id": "latanime",
+      "name": "Latanime (solo Latino)",
+      "description": "Anime SOLO en latino de latanime.org: descarta las entradas 'castellano' del sitio y confirma el idioma en el <title> cuando el slug no lo dice. Verificado 2026-09-23 en Node y QuickJS (runtime de Nuvio): Kaiju No. 8 S2E1 7 streams, S1E1 6, Solo Leveling S1E1 6, Jujutsu Kaisen S1E1 5, Dragon Ball Daima S1E1 7; y 0 en la entrada que el sitio publica solo en castellano (Narumi no Heijitsu) y en mediaType movie. Resuelve voe.sx/cloudwindow, uqload, filemoon, lulu, dood, ok.ru y yourupload; el resto de servidores (hexload, savefiles, mp4upload, mixdrop, listeamed, vide0, mega) se emiten como embed porque no tienen resolución estática.",
+      "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "tv"
+      ],
+      "filename": "providers/latanime.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=latanime.org&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
       "id": "cinesrc",
       "name": "CineSRC",
       "description": "Embed oficial del sitio (cinesrc.st/embed/{movie|tv}/{tmdbId}); emite 1 stream = el embed, que elige servidor adentro. Verificado 2026-09-23 en Node y QuickJS: Dune2 1, The Boys S3E1 1. El m3u8 NO se puede resolver en el provider: el embed va detrás de una barrera proof-of-work resuelta con WebAssembly (/pow-worker-v3.js + /pow-v3.wasm) y QuickJS no tiene WASM ni Workers. Necesita reproductor WebView con WASM.",
