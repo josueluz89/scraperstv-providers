@@ -53,15 +53,15 @@ Repositorio con los **providers JS que corre MasterScrap** (la app de TV). La ap
 ## Providers apagados (5)
 
 Se quedan en el repo (con su causa) para no perder el trabajo: la app los ignora porque están
-`enabled: false`.
+`enabled: false`. Los cinco se apagaron el **2026-09-23**.
 
 | Nombre | id | Por qué está apagado |
 |---|---|---|
-| CineCalidad KL | `cinecalidad_kl` | DESHABILITADO 2026-09-23: cinecalidad.vg devuelve 503 y el provider termina con 0 embeds (0 streams, Dune2) |
-| DeTodoPeliculas | `detodopeliculas` | DESHABILITADO 2026-09-23: detodopeliculas.nu no responde (timeout) y el bundle usa crypto-js + Buffer (necesita los externos |
-| Fanpelis | `fanpelis` | DESHABILITADO 2026-09-23: fanpelis.to no responde (timeout). Películas y series en latino vía API de Fanpelis |
-| LaCartoons | `lacartoons` | DESHABILITADO 2026-09-23: lacartoons.com con timeout (0 bytes). Series animadas en latino (Cartoon Network, Nickelodeon, Disn |
-| Masters (GnulaHD) | `masters` | DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en Latino/Castellano/Subtitulado |
+| CineCalidad KL | `cinecalidad_kl` | cinecalidad.vg devuelve 503 y el provider termina con 0 embeds |
+| DeTodoPeliculas | `detodopeliculas` | detodopeliculas.nu no responde (timeout) y el bundle necesita los externos de Nuvio (crypto-js, Buffer) |
+| Fanpelis | `fanpelis` | fanpelis.to no responde (timeout) |
+| LaCartoons | `lacartoons` | lacartoons.com con timeout (0 bytes) |
+| Masters (GnulaHD) | `masters` | gnulahd.nu y ww3 devuelven 502 |
 
 ## Añadir o arreglar un provider
 
@@ -86,8 +86,8 @@ node build.js cuevana    # sólo uno
 node validar.js          # comprobar manifest y archivos
 ```
 
-9 providers tienen fuentes en `src/`; los otros 15 son directamente el `.js` (vendorizados).
-Lista completa y cómo probarlos en Node: [docs/TALLER.md](docs/TALLER.md).
+8 providers tienen fuentes en `src/` (los compila `build.js`); los otros 15 son directamente el
+`.js` ya empaquetado. Lista completa y cómo probarlos en Node: [docs/TALLER.md](docs/TALLER.md).
 
 ## Documentación
 

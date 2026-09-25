@@ -5,7 +5,7 @@
     {
       "id": "cinecalidad",
       "name": "CineCalidad",
-      "description": "Reescrito 2026-09-24: cinecalidad.ec redirige (301) a cinecalidad.am, que ya no es el portal scrapeable (/ver-pelicula/, data",
+      "description": "Reescrito 2026-09-24: cinecalidad.ec salta a cinecalidad.am, SPA con API propia por TMDB (tmdb.cinecalidad.am) y player vimeos. Verificado: Dune 2, 1.",
       "version": "2.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -26,7 +26,7 @@
     {
       "id": "cinesrc",
       "name": "CineSRC",
-      "description": "Embed oficial del sitio (cinesrc.st/embed/{movie|tv}/{tmdbId}); emite 1 stream = el embed, que elige servidor adentro",
+      "description": "Emite el embed oficial de cinesrc.st (/embed/{movie|tv}/{tmdbId}). El m3u8 va detrás de una barrera proof-of-work con WASM, que QuickJS no resuelve.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -47,7 +47,7 @@
     {
       "id": "cuevana",
       "name": "Cuevana",
-      "description": "Películas y series en latino vía wv3.cuevana3.eu (verificado 2026-09-23: Dune2 3 streams)",
+      "description": "Películas y series en latino vía wv3.cuevana3.eu. Verificado 2026-09-23: Dune 2, 3 streams.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -68,7 +68,7 @@
     {
       "id": "embed69",
       "name": "Embed69",
-      "description": "",
+      "description": "Saca los m3u8 directos del embed del sitio. Verificado 2026-09-23: Dune 2, 6 streams; Breaking Bad S1E1, 4.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -89,7 +89,7 @@
     {
       "id": "fuegocine",
       "name": "FuegoCine",
-      "description": "Scrape del sitio (Blogger, lista _SV_LINKS del post) tras morir la API modlyo.com",
+      "description": "Scrape del sitio (Blogger, lista _SV_LINKS del post) desde que murió la API modlyo.com. Verificado: Dune 2, 4; Deadpool y Wolverine, 5.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -110,7 +110,7 @@
     {
       "id": "lamovie",
       "name": "LaMovie",
-      "description": "Reescrito 2026-09-24: lamovie.org ya no es un portal scrapeable sino una SPA con API propia indexada por TMDB (tmdb.lamovie.o",
+      "description": "Reescrito 2026-09-24: lamovie.org es una SPA con API por TMDB (tmdb.lamovie.org) y player vimeos. Pide el code por TMDB y verifica el m3u8 antes de emitirlo.",
       "version": "2.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -131,7 +131,7 @@
     {
       "id": "latanime",
       "name": "Latanime (solo Latino)",
-      "description": "Anime SOLO en latino de latanime.org (estricto desde 2026-09-24): descarta cualquier entrada 'castellano' y exige que el slug",
+      "description": "Anime SOLO en latino de latanime.org: descarta lo marcado como castellano y exige que el slug o el título confirmen latino. Verificado: 15 animes con streams.",
       "version": "1.1.0",
       "author": "Masters",
       "supportedTypes": [
@@ -151,7 +151,7 @@
     {
       "id": "pelispedia",
       "name": "Pelispedia",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 3 m3u8 de fastream; Breaking Bad S1E1, 2. Necesita la cabecera Accept o el CDN responde 403.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -172,7 +172,7 @@
     {
       "id": "pelisplus",
       "name": "PelisPlusHD",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 1 stream; Juego de Tronos S1E1, 1 (fix de series).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -193,7 +193,7 @@
     {
       "id": "pelisplusto",
       "name": "Pelisplusto",
-      "description": "Películas y series en latino desde PelisPlusHD (vía uqlink + hosts directos)",
+      "description": "Películas y series en latino desde PelisPlusHD (uqlink + hosts directos). Verificado 2026-09-24: Dune 2, 6; The Boys S3E1, 2.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -214,7 +214,7 @@
     {
       "id": "poseidon",
       "name": "PoseidonHD2",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 8 embeds; Juego de Tronos S1E1, 3 (fix de series).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -235,7 +235,7 @@
     {
       "id": "seriesflix",
       "name": "SeriesFlixHD",
-      "description": "Series en latino. Reactivado 2026-09-24: seriesflixhd.best redirige a seriesflixhd.team, que sí devuelve episodios (The Boys",
+      "description": "Series en latino. Reactivado 2026-09-24: seriesflixhd.best salta a seriesflixhd.team, que sí devuelve episodios (The Boys S3E1, 2).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -255,7 +255,7 @@
     {
       "id": "seriesmetro",
       "name": "SeriesMetro",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 3; Breaking Bad S1E1, 2. Necesita la cabecera Accept o el CDN responde 403.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -276,7 +276,7 @@
     {
       "id": "seriesmetro_kl",
       "name": "SeriesMetro KL",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 1; Juego de Tronos S1E1, 1 (fix de series y episodio). Lleva polyfills porque el bundle usaba normalize y matchAll.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -297,7 +297,7 @@
     {
       "id": "smartpelis",
       "name": "SmartPelis",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 3; Breaking Bad S1E1, 2. Mismo fix de Accept que seriesmetro.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -318,7 +318,7 @@
     {
       "id": "tioplus",
       "name": "TioPlus",
-      "description": "",
+      "description": "Verificado 2026-09-23: Dune 2, 4; Breaking Bad S1E1, 9.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -339,7 +339,7 @@
     {
       "id": "unlimplay",
       "name": "Unlimplay",
-      "description": "Actualizado 2026-09-24 al flujo nuevo del sitio: el embed vive en /embed/{movie|tv}/… y publica var LANGS (link cifrado por s",
+      "description": "Flujo nuevo del sitio: /embed/{movie|tv}/… + POST /edge-data para el token fresco, que devuelve el m3u8 o el embed real. El backend da 504 a ratos y el provider reintenta por servidor.",
       "version": "2.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -360,7 +360,7 @@
     {
       "id": "vidsrc",
       "name": "VidSrc",
-      "description": "",
+      "description": "Verificado 2026-09-24 (audio en inglés): Dune 2, 2; The Boys S3E1, 2. Fix: las series van a /embed/tv/<id>/<s>-<e>.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -381,7 +381,7 @@
     {
       "id": "cinecalidad_kl",
       "name": "CineCalidad KL",
-      "description": "DESHABILITADO 2026-09-23: cinecalidad.vg devuelve 503 y el provider termina con 0 embeds (0 streams, Dune2)",
+      "description": "DESHABILITADO 2026-09-23: cinecalidad.vg devuelve 503 y el provider termina con 0 embeds (Dune 2, 0 streams).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -402,7 +402,7 @@
     {
       "id": "detodopeliculas",
       "name": "DeTodoPeliculas",
-      "description": "DESHABILITADO 2026-09-23: detodopeliculas.nu no responde (timeout) y el bundle usa crypto-js + Buffer (necesita los externos",
+      "description": "DESHABILITADO 2026-09-23: detodopeliculas.nu no responde (timeout) y el bundle necesita los externos de Nuvio (crypto-js, Buffer).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -423,7 +423,7 @@
     {
       "id": "fanpelis",
       "name": "Fanpelis",
-      "description": "DESHABILITADO 2026-09-23: fanpelis.to no responde (timeout). Películas y series en latino vía API de Fanpelis",
+      "description": "DESHABILITADO 2026-09-23: fanpelis.to no responde (timeout). Películas y series en latino por la API del sitio.",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -444,7 +444,7 @@
     {
       "id": "lacartoons",
       "name": "LaCartoons",
-      "description": "DESHABILITADO 2026-09-23: lacartoons.com con timeout (0 bytes). Series animadas en latino (Cartoon Network, Nickelodeon, Disn",
+      "description": "DESHABILITADO 2026-09-23: lacartoons.com con timeout (0 bytes). Series animadas en latino (Cartoon Network, Nickelodeon, Disney…).",
       "version": "1.0.0",
       "author": "Masters",
       "supportedTypes": [
@@ -464,7 +464,7 @@
     {
       "id": "masters",
       "name": "Masters (GnulaHD)",
-      "description": "DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en Latino/Castellano/Subtitulado",
+      "description": "DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en latino, castellano y subtitulado.",
       "version": "1.8.0",
       "author": "Masters",
       "supportedTypes": [
