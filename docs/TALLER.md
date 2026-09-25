@@ -39,11 +39,16 @@ node validar.js
 
 El repo tenía `scripts/qjs-check.cjs`, un arnés que corría el provider en QuickJS con **sólo**
 lo que da la app (sin `Buffer`, `URL`, `TextEncoder`, `String.normalize` ni `matchAll`), que es
-lo que distingue *"no carga"* de *"carga y el sitio no da nada"*. Se borró el 2026-09-25
-(commit `ca712a3`). Si lo quieres de vuelta:
+lo que distingue *"no carga"* de *"carga y el sitio no da nada"*. Se borró el 2026-09-25.
+Si lo quieres de vuelta, búscalo **por ruta**, no por hash (los hashes cambian cada vez que se
+reescribe el historial):
 
 ```bash
-git show ca712a3^:scripts/qjs-check.cjs > scripts/qjs-check.cjs
+# el commit que lo borró
+git log --diff-filter=D --oneline -- scripts/qjs-check.cjs
+
+# recuperarlo de su padre
+git show <ese-commit>^:scripts/qjs-check.cjs > scripts/qjs-check.cjs
 ```
 
 ## Avisos que salieron al ordenar el repo (2026-09-25)
