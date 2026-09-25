@@ -1,4 +1,4 @@
-# deps (solo herramientas de desarrollo: build y arnés QuickJS)
+# deps (solo herramientas de desarrollo: build y validar)
 node_modules/
 
 # OS

@@ -20,6 +20,8 @@ salvo los módulos externos declarados arriba en el propio `build.js`).
 - **Con fuentes en `src/` (8)**: `cinecalidad`, `cuevana`, `fanpelis`, `lacartoons`, `lamovie`, `latanime`, `masters`, `pelisplusto`
 - **Vendorizados (15)** (el `.js` es la única fuente, no se compilan): `cinecalidad_kl`, `cinesrc`, `detodopeliculas`, `embed69`, `fuegocine`, `pelispedia`, `pelisplus`, `poseidon`, `seriesflix`, `seriesmetro`, `seriesmetro_kl`, `smartpelis`, `tioplus`, `unlimplay`, `vidsrc`
 - `src/shared/` son módulos comunes (http, quality, extracción de embeds, TMDB).
+- `providers/_template.js` y `src/_template/` son plantillas de arranque para un provider nuevo:
+  **no están en el manifest** y la app no las toca. Los 23 del manifest son los otros.
 
 ## Probar antes de subir
 
