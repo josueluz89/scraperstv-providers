@@ -1,13 +1,11 @@
 {
-    "name": "nuvio-providers",
+    "name": "masterscrap-providers",
     "version": "1.0.0",
-    "description": "Providers for Nuvio Streaming",
+    "description": "Providers JS del motor de MasterScrap (formato Stremio, runtime QuickJS)",
     "scripts": {
         "build": "node build.js",
         "build:watch": "nodemon --watch src -e js,json --exec 'node build.js'",
-        "build:provider": "node build.js",
-        "qjs": "node scripts/qjs-check.cjs",
-        "start": "node server.js"
+        "validar": "node validar.js"
     },
     "devDependencies": {
         "cheerio": "^1.1.2",
@@ -17,9 +15,10 @@
         "quickjs-emscripten": "^0.32.0"
     },
     "keywords": [
-        "nuvio",
-        "streaming",
-        "providers"
+        "masterscrap",
+        "stremio",
+        "providers",
+        "quickjs"
     ],
     "license": "GPL-3.0",
     "dependencies": {

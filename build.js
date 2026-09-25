@@ -63,6 +63,10 @@ async function buildProvider(providerName, options = {}) {
             entryPoints: [entryPoint],
             bundle: true,
             outfile: outFile,
+            // Sin esto esbuild anota las rutas relativas a la carpeta desde la que se lanza
+            // (p. ej. `// ../../otra-carpeta/src/shared/http.js`), asi que el comentario
+            // cambiaba segun la maquina. Con absWorkingDir queda siempre `src/shared/...`.
+            absWorkingDir: __dirname,
             format: 'cjs',              // CommonJS for module.exports compatibility
             platform: 'neutral',        // Works in both browser and node-like environments
             target: 'es2016',           // Transpile async/await to generators for Hermes
