@@ -2,9 +2,10 @@
 
 Lo que antes estaba en el README y no hace falta tener delante, pero conviene no perder.
 
-> Ojo: la tabla de abajo es la foto del **2026-09-24**. Desde entonces el manifest manda:
-> por ejemplo aquí `seriesflix` figura como *off*, pero en `manifest.json` está `enabled: true`.
-> Si un día lo confirmas apagado, ponlo `enabled: false` en el manifest (y la app lo ignora).
+> Ojo: la tabla de abajo es la foto del **2026-09-24**. Desde entonces manda `manifest.json`:
+> hoy son **18 activos** y **5 apagados** (`masters`, `fanpelis`, `lacartoons`, `cinecalidad_kl`,
+> `detodopeliculas`, los cinco con su causa al final de la tabla). Si cambias de opinión sobre uno,
+> edita el manifest: la app lee de ahí y lo apagado simplemente no se consulta.
 
 ## Providers y su última verificación
 
@@ -29,7 +30,7 @@ Lo que antes estaba en el README y no hace falta tener delante, pero conviene no
 | unlimplay | `providers/unlimplay.js` | activo (sitio inestable) | flujo nuevo del sitio (`/embed/…` + `var LANGS` + `POST /edge-data` con token fresco). El backend responde 504/timeouts de forma intermitente: el 2026-09-24 la web quedó colgada y no se pudo re-verificar |
 | lamovie | `providers/lamovie.js` | activo (reescrito) | lamovie.org ya no es un portal scrapeable: SPA + API propia por TMDB (`tmdb.lamovie.org/v1`) y player `vimeos.net/embed-%fileCode%.html`. Dune2 1, The Boys S3E1 1, Breaking Bad S1E1 1 (Node y QuickJS) |
 | cinecalidad | `providers/cinecalidad.js` | activo (reescrito) | cinecalidad.ec → **cinecalidad.am** (301) con la misma plataforma que lamovie (`tmdb.cinecalidad.am/v1` + vimeos). Dune2 1, The Boys S3E1 1, Breaking Bad S1E1 1 |
-| seriesflix | `providers/seriesflix.js` | **off** | seriesflixhd.best redirige a seriesflixhd.team; pendiente de re-verificar |
+| seriesflix | `providers/seriesflix.js` | activo | seriesflixhd.best redirige a seriesflixhd.team (301), que sí devuelve episodios; sigue activo en el manifest |
 | cinecalidad_kl | `providers/cinecalidad_kl.js` | **off** | cinecalidad.vg no responde (timeout, comprobado 2026-09-24) |
 | detodopeliculas | `providers/detodopeliculas.js` | **off** | detodopeliculas.nu devuelve 522 (comprobado 2026-09-24); usa crypto-js + Buffer |
 | masters | `providers/masters.js` | **off** | gnulahd.nu devuelve 502 (comprobado 2026-09-24) |
