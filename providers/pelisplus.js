@@ -38,7 +38,29 @@ var TIMEOUT = 12000;
 var MAX_TITULOS = 4; // por dominio
 var MAX_CANDIDATOS = 3; // fichas que se llegan a abrir
 
-var muertos = {}; // dominio -> challenge de Cloudflare (se salta)
+// Dominio -> momento en que se le vio el challenge de Cloudflare.
+//
+// OJO (corregido 2026-09-25): antes esto era un simple `muertos[base] = 1` PERMANENTE y era un
+// bug gordo. `muertos` es estado de MODULO: vive mientras vive el interprete, y el motor
+// reutiliza el mismo para todos los titulos de la sesion. Como `fetchText` devuelve null tanto
+// por un challenge de Cloudflare COMO por un timeout o un corte de red, UN SOLO fallo
+// transitorio apagaba el dominio bueno (pelisplushd.to) para TODAS las busquedas siguientes,
+// y el provider se quedaba con el espejo malo (.bz), que solo da embeds crudos: 1-2 enlaces, o
+// 0 si el titulo no esta en su catalogo (medido: "0 enlaces" para casi todo).
+//
+// Ahora el "muerto" CADUCA: se reintenta pasado COOLDOWN_CHALLENGE_MS. En QuickJS eso se
+// evalua solo la primera vez que se mira (Date.now() es real), asi que no depende de que los
+// timers disparen, que en este runtime NO disparan.
+var muertos = {}; // dominio -> momento (ms) del ultimo challenge visto
+var COOLDOWN_CHALLENGE_MS = 90000; // 90 s: ni martillea Cloudflare ni apaga el dominio para siempre
+
+function estaMuerto(base) {
+  var cuando = muertos[base];
+  if (!cuando) return false;
+  if (Date.now() - cuando < COOLDOWN_CHALLENGE_MS) return true;
+  delete muertos[base]; // el challenge caduco: se vuelve a probar
+  return false;
+}
 
 // ─────────────────────────────────────────────────────────
 // HTTP
@@ -266,7 +288,7 @@ function buscarFichas(titulos, mediaType) {
   function porDominio() {
     if (d >= DOMAINS.length) return Promise.resolve(cands);
     var base = DOMAINS[d++];
-    if (muertos[base]) return porDominio();
+    if (estaMuerto(base)) return porDominio();
 
     var i = 0;
     var exacto = false;
@@ -277,7 +299,9 @@ function buscarFichas(titulos, mediaType) {
       var url = base + "/search?s=" + encodeURIComponent(t);
       return fetchText(url, base + "/").then(function (html) {
         if (html === null) {
-          muertos[base] = 1;
+          // Se apunta CUANDO, no "para siempre": un timeout pasajero no puede apagar el
+          // dominio bueno el resto de la sesion (ver el comentario de `muertos` arriba).
+          muertos[base] = Date.now();
           return;
         }
         var res = parseResultados(html, mediaType);

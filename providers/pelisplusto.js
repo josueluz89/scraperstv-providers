@@ -1,6 +1,6 @@
 /**
  * pelisplusto - Built from src/pelisplusto/
- * Generated: 2026-09-24T05:33:42.885Z
+ * Generated: 2026-09-26T01:40:16.359Z
  */
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -1593,7 +1593,7 @@ function resolveHostStream(embedUrl, family, timeoutMs) {
 var TMDB_API_KEY = "1f54bd990f1cdfb230adb312546d765d";
 var MAIN_URL = "https://pelisplushd.bz";
 var UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-var RESOLVE_TIMEOUT = 15e3;
+var RESOLVE_TIMEOUT = 5e3;
 var ACCENT_MAP = { "\xE1": "a", "\xE9": "e", "\xED": "i", "\xF3": "o", "\xFA": "u", "\xFC": "u", "\xF1": "n", "\xC1": "a", "\xC9": "e", "\xCD": "i", "\xD3": "o", "\xDA": "u", "\xDC": "u", "\xD1": "n", "\xE0": "a", "\xE8": "e", "\xEC": "i", "\xF2": "o", "\xF9": "u", "\xE2": "a", "\xEA": "e", "\xEE": "i", "\xF4": "o", "\xFB": "u", "\xE4": "a", "\xEB": "e", "\xEF": "i", "\xF6": "o", "\xE7": "c", "\xE3": "a", "\xF5": "o" };
 function stripAccents(s) {
   return (s || "").replace(/[^\x00-\x7F]/g, function(c) {
