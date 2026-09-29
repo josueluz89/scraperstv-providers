@@ -4,6 +4,7 @@
  */
 
 import { extractStreams } from './extractor.js';
+import { withWorkingStreams } from '../shared/validate.js';
 
 /**
  * Main function called by Nuvio
@@ -19,7 +20,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         // Call your extraction logic
         const streams = await extractStreams(tmdbId, mediaType, season, episode);
 
-        return streams;
+        return withWorkingStreams(Promise.resolve(streams));
     } catch (error) {
         console.error(`[Template] Error: ${error.message}`);
         return [];

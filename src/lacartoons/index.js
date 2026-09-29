@@ -1,4 +1,5 @@
 import { extractStreams } from './extractor.js';
+import { withWorkingStreams } from '../shared/validate.js';
 function withTimeout(promise, ms) {
   if (typeof setTimeout === 'undefined') return promise;
   return Promise.race([
@@ -7,9 +8,9 @@ function withTimeout(promise, ms) {
   ]);
 }
 function getStreams(tmdbId, mediaType, season, episode) {
-  return withTimeout(
+  return withWorkingStreams(withTimeout(
     extractStreams(tmdbId, mediaType, season, episode).catch(function(){ return []; }),
     40000
-  );
+  ));
 }
 module.exports = { getStreams };

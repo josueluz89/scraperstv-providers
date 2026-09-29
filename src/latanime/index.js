@@ -1,4 +1,5 @@
 import { extraer } from './extractor.js';
+import { withWorkingStreams } from '../shared/validate.js';
 
 function withTimeout(promise, ms) {
   if (typeof setTimeout === 'undefined') return promise;
@@ -22,12 +23,12 @@ function withTimeout(promise, ms) {
 function getStreams(tmdbId, mediaType, season, episode) {
   var tipo = String(mediaType || '').toLowerCase();
   if (tipo === 'movie') return Promise.resolve([]); // el sitio no tiene películas
-  return withTimeout(
+  return withWorkingStreams(withTimeout(
     extraer(tmdbId, tipo, season, episode).catch(function () {
       return [];
     }),
     45000
-  );
+  ));
 }
 
 module.exports = { getStreams };

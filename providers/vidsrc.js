@@ -1,3 +1,79 @@
+// ===== MasterScrap: validacion de enlaces funcionales (inyectado) =====
+// Prueba cada URL con sus headers reales; descarta muertos (4xx/5xx/timeout),
+// elimina duplicados y ordena por calidad. QuickJS-safe.
+var __msValidate = (function () {
+  var TIMEOUT_MS = 7000;
+  var CONCURRENCY = 4;
+  function qualityRank(q) {
+    if (!q) return 0;
+    var s = String(q).toLowerCase();
+    if (s.indexOf('4k') !== -1 || s.indexOf('2160') !== -1) return 2160;
+    var m = s.match(/(\d{3,4})\s*p/);
+    if (m) return parseInt(m[1], 10);
+    return 0;
+  }
+  function isM3u8(url) { return /\.m3u8(\?|#|$)/i.test(url || ''); }
+  function checkUrl(url, headers, timeoutMs) {
+    return new Promise(function (resolve) {
+      var done = false, timer = null, controller = null;
+      function finish(ok) {
+        if (done) return; done = true;
+        if (timer) { try { clearTimeout(timer); } catch (e) {} timer = null; }
+        if (controller) { try { controller.abort(); } catch (e) {} }
+        resolve(!!ok);
+      }
+      if (!url || typeof url !== 'string' || url.indexOf('http') !== 0) { resolve(false); return; }
+      if (typeof setTimeout !== 'undefined') {
+        timer = setTimeout(function () { timer = null; finish(false); }, timeoutMs || TIMEOUT_MS);
+      }
+      var reqHeaders = { 'Range': 'bytes=0-2047',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+      if (headers) for (var k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k) && headers[k]) reqHeaders[k] = headers[k];
+      }
+      var reqInit = { headers: reqHeaders, redirect: 'follow' };
+      try {
+        if (typeof AbortController !== 'undefined') { controller = new AbortController(); reqInit.signal = controller.signal; }
+      } catch (e) { controller = null; }
+      fetch(url, reqInit).then(function (res) {
+        var st = res.status;
+        if (st === 200 || st === 206 || st === 416) {
+          if (isM3u8(url)) {
+            res.text().then(function (t) { finish(t && t.indexOf('#EXTM3U') !== -1); }).catch(function () { finish(true); });
+          } else finish(true);
+        } else finish(false);
+      }).catch(function () { finish(false); });
+    });
+  }
+  function filterWorkingStreams(streams, opts) {
+    opts = opts || {};
+    var timeout = opts.timeoutMs || TIMEOUT_MS, concurrency = opts.concurrency || CONCURRENCY;
+    var seen = {}, uniq = [];
+    (streams || []).forEach(function (s) { if (!s || !s.url || seen[s.url]) return; seen[s.url] = 1; uniq.push(s); });
+    if (uniq.length === 0) return Promise.resolve([]);
+    var results = new Array(uniq.length), cursor = 0;
+    function worker() {
+      if (cursor >= uniq.length) return Promise.resolve();
+      var i = cursor++, st = uniq[i];
+      return checkUrl(st.url, st.headers, timeout).then(function (ok) { results[i] = ok ? st : null; })
+        .catch(function () { results[i] = null; }).then(worker);
+    }
+    var workers = [], n = Math.min(concurrency, uniq.length);
+    for (var w = 0; w < n; w++) workers.push(worker());
+    return Promise.all(workers).then(function () {
+      var alive = [];
+      for (var i = 0; i < results.length; i++) if (results[i]) alive.push(results[i]);
+      alive.sort(function (a, b) { return qualityRank(b.quality) - qualityRank(a.quality); });
+      return alive;
+    }).catch(function () { return []; });
+  }
+  function withWorkingStreams(p) {
+    return Promise.resolve(p).then(filterWorkingStreams).catch(function () { return []; });
+  }
+  return { withWorkingStreams: withWorkingStreams, filterWorkingStreams: filterWorkingStreams };
+})();
+// ===== fin validacion inyectada =====
+
 // vidsrc — puerto a JS de lib/data/extractors/providers/vidsrc_extractor.dart
 // (el codigo Dart del repo del proyecto) al formato que ejecuta el motor de
 // MasterScrap: CommonJS `module.exports = { getStreams }`, solo fetch + RegExp.
@@ -393,3 +469,17 @@ async function getStreams(tmdbId, mediaType, season, episode) {
 }
 
 module.exports = { getStreams };
+
+// ===== MasterScrap: getStreams solo devuelve enlaces funcionales =====
+(function () {
+  try {
+    var __origGetStreams = module.exports.getStreams;
+    if (typeof __origGetStreams === 'function') {
+      module.exports = {
+        getStreams: function (tmdbId, mediaType, season, episode) {
+          return __msValidate.withWorkingStreams(__origGetStreams(tmdbId, mediaType, season, episode));
+        }
+      };
+    }
+  } catch (e) {}
+})();
