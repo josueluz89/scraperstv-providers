@@ -1,6 +1,8 @@
 // ===== MasterScrap: validacion de enlaces funcionales (inyectado) =====
 // Prueba cada URL con sus headers reales; descarta muertos (4xx/5xx/timeout),
-// elimina duplicados y ordena por calidad. QuickJS-safe.
+// elimina duplicados y ordena por calidad. ESTRICTO v2: solo pasa VIDEO REAL
+// reproducible (video/*, mpegurl o extension de video con 2xx); las paginas
+// HTML de embed sin resolver se descartan. QuickJS-safe.
 var __msValidate = (function () {
   var TIMEOUT_MS = 7000;
   var CONCURRENCY = 4;
@@ -13,6 +15,20 @@ var __msValidate = (function () {
     return 0;
   }
   function isM3u8(url) { return /\.m3u8(\?|#|$)/i.test(url || ''); }
+  function hasVideoExt(url) { return /\.(mp4|m3u8|mkv|webm|ts|m4v|mov)(\?|#|$)/i.test(url || ''); }
+  function isVideoResp(ct, url) {
+    var c = '';
+    try { c = String(ct || '').toLowerCase().split(';')[0].trim(); } catch (e) {}
+    if (c.indexOf('video/') === 0) return true;
+    if (c === 'application/vnd.apple.mpegurl' || c === 'application/x-mpegurl') return true;
+    if (c === 'application/octet-stream' || c === 'binary/octet-stream') return hasVideoExt(url);
+    if (!c) return hasVideoExt(url);
+    return false;
+  }
+  function getCT(res) {
+    try { if (res && res.headers && typeof res.headers.get === 'function') return res.headers.get('content-type'); } catch (e) {}
+    return '';
+  }
   function checkUrl(url, headers, timeoutMs) {
     return new Promise(function (resolve) {
       var done = false, timer = null, controller = null;
@@ -40,7 +56,9 @@ var __msValidate = (function () {
         if (st === 200 || st === 206 || st === 416) {
           if (isM3u8(url)) {
             res.text().then(function (t) { finish(t && t.indexOf('#EXTM3U') !== -1); }).catch(function () { finish(true); });
-          } else finish(true);
+          } else if (st === 416) { finish(true); }
+          else if (!isVideoResp(getCT(res), url)) { finish(false); }
+          else finish(true);
         } else finish(false);
       }).catch(function () { finish(false); });
     });

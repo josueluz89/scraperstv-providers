@@ -1,12 +1,19 @@
 /**
  * Validación de enlaces funcionales para los providers de MasterScrap.
  *
- * Garantiza que getStreams() solo devuelva streams cuyas URLs responden de
- * verdad. Cada URL candidata se prueba con un GET de rango llevando los
- * headers propios del stream (Referer/Origin/User-Agent), que estos hosts
- * exigen. Se descartan los enlaces muertos (4xx/5xx, errores de red,
- * timeouts), se eliminan duplicados y se ordena por calidad (mejor primero)
- * para que la app pruebe primero el mejor enlace funcional.
+ * Garantiza que getStreams() solo devuelva streams cuyas URLs son VIDEO REAL
+ * reproducible por el reproductor de la app (ExoPlayer). Cada URL candidata
+ * se prueba con un GET de rango llevando los headers propios del stream
+ * (Referer/Origin/User-Agent), que estos hosts exigen.
+ *
+ * ESTRICTO (v2): además de descartar enlaces muertos (4xx/5xx, errores de red,
+ * timeouts), se RECHAZA toda respuesta que no sea video: páginas HTML de embed
+ * sin resolver, landers, captchas, etc. Solo pasa si el content-type es de
+ * video (video/*, mpegurl) o la URL termina en extensión de video con 2xx.
+ * Las playlists m3u8 además deben contener #EXTM3U.
+ *
+ * Se eliminan duplicados y se ordena por calidad (mejor primero) para que la
+ * app pruebe primero el mejor enlace funcional.
  *
  * QuickJS-safe: var/function, sin matchAll/normalize; funciona sin
  * setTimeout/AbortController (degrada a fetch plano; el límite de 60 s de la
@@ -32,7 +39,43 @@ function isM3u8(url) {
   return /\.m3u8(\?|#|$)/i.test(url || '');
 }
 
-// Prueba una URL. Resuelve true solo si el host responde con contenido útil.
+function hasVideoExtension(url) {
+  return /\.(mp4|m3u8|mkv|webm|ts|m4v|mov)(\?|#|$)/i.test(url || '');
+}
+
+// ¿La respuesta es video real reproducible? Rechaza páginas HTML de embed,
+// landers y cualquier otro contenido no-video. Algunos hosts sirven el mp4
+// como application/octet-stream: se acepta solo si la URL termina en
+// extensión de video.
+function isVideoResponse(contentType, url) {
+  var ct = '';
+  try {
+    ct = String(contentType || '').toLowerCase().split(';')[0].trim();
+  } catch (e) {
+    ct = '';
+  }
+  if (ct.indexOf('video/') === 0) return true;
+  if (ct === 'application/vnd.apple.mpegurl' || ct === 'application/x-mpegurl') return true;
+  if (ct === 'application/octet-stream' || ct === 'binary/octet-stream') {
+    return hasVideoExtension(url);
+  }
+  if (!ct) {
+    // Sin content-type: aceptar solo por extensión de video.
+    return hasVideoExtension(url);
+  }
+  return false;
+}
+
+function getContentType(res) {
+  try {
+    if (res && res.headers && typeof res.headers.get === 'function') {
+      return res.headers.get('content-type');
+    }
+  } catch (e) {}
+  return '';
+}
+
+// Prueba una URL. Resuelve true solo si el host responde con VIDEO útil.
 function checkUrl(url, headers, timeoutMs) {
   return new Promise(function (resolve) {
     var done = false;
@@ -98,6 +141,13 @@ function checkUrl(url, headers, timeoutMs) {
           }).catch(function () {
             finish(true);
           });
+        } else if (status === 416) {
+          // Sin cuerpo que inspeccionar: se acepta como vivo (raro).
+          finish(true);
+        } else if (!isVideoResponse(getContentType(res), url)) {
+          // HTML de embed, lander, captcha, etc: no es reproducible.
+          try { if (controller) controller.abort(); } catch (e) {}
+          finish(false);
         } else {
           finish(true);
         }

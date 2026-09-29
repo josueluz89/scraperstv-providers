@@ -1,30 +1,13 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-09-29T15:00:13.537Z
+ * Generated: 2026-09-29T16:38:01.561Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
-var __defProps = Object.defineProperties;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getOwnPropSymbols = Object.getOwnPropertySymbols;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __propIsEnum = Object.prototype.propertyIsEnumerable;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __spreadValues = (a, b) => {
-  for (var prop in b || (b = {}))
-    if (__hasOwnProp.call(b, prop))
-      __defNormalProp(a, prop, b[prop]);
-  if (__getOwnPropSymbols)
-    for (var prop of __getOwnPropSymbols(b)) {
-      if (__propIsEnum.call(b, prop))
-        __defNormalProp(a, prop, b[prop]);
-    }
-  return a;
-};
-var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -337,6 +320,7 @@ function resolveVoeStream(embedUrl) {
 }
 
 // src/shared/embedResolvers.js
+var import_crypto_js = __toESM(require("crypto-js"));
 function getUrlOrigin(url) {
   if (!url)
     return "";
@@ -503,53 +487,135 @@ function resolveVidHideProStream(embedUrl) {
     }
   });
 }
+function byseB64ToWordArray(s) {
+  try {
+    var norm = String(s || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (norm.length % 4 !== 0)
+      norm += "=";
+    return import_crypto_js.default.enc.Base64.parse(norm);
+  } catch (e) {
+    return null;
+  }
+}
+function byseKeyParts(playback) {
+  try {
+    var parts = playback.key_parts || [];
+    var total = parts.length;
+    var v = parseInt(playback.version, 10);
+    var pair = [];
+    if (v >= 1 && v <= 20)
+      pair = [v, 31 - v];
+    var picked = [];
+    for (var i = 0; i < pair.length; i++) {
+      var idx = pair[i];
+      if (idx >= 1 && idx <= total && parts[idx - 1])
+        picked.push(parts[idx - 1]);
+    }
+    if (picked.length !== pair.length || picked.length === 0)
+      return parts;
+    return picked;
+  } catch (e) {
+    return [];
+  }
+}
+function byseDecryptPlayback(playback) {
+  try {
+    if (!playback || !playback.payload || !playback.iv)
+      return null;
+    var parts = byseKeyParts(playback);
+    if (!parts.length)
+      return null;
+    var keyHex = "";
+    for (var i = 0; i < parts.length; i++) {
+      var wa = byseB64ToWordArray(parts[i]);
+      if (!wa)
+        return null;
+      keyHex += wa.toString(import_crypto_js.default.enc.Hex);
+    }
+    var keyWA = import_crypto_js.default.enc.Hex.parse(keyHex);
+    var ivWA = byseB64ToWordArray(playback.iv);
+    var fullWA = byseB64ToWordArray(playback.payload);
+    if (!keyWA || !ivWA || !fullWA)
+      return null;
+    var ivHex = ivWA.toString(import_crypto_js.default.enc.Hex);
+    if (ivHex.length === 24)
+      ivHex = ivHex + "00000002";
+    var ctrIv = import_crypto_js.default.enc.Hex.parse(ivHex);
+    var fullHex = fullWA.toString(import_crypto_js.default.enc.Hex);
+    if (fullHex.length < 32)
+      return null;
+    var ctHex = fullHex.substring(0, fullHex.length - 32);
+    var cipherParams = import_crypto_js.default.lib.CipherParams.create({
+      ciphertext: import_crypto_js.default.enc.Hex.parse(ctHex)
+    });
+    var decrypted = import_crypto_js.default.AES.decrypt(cipherParams, keyWA, {
+      iv: ctrIv,
+      mode: import_crypto_js.default.mode.CTR,
+      padding: import_crypto_js.default.pad.NoPadding
+    });
+    var plain = decrypted.toString(import_crypto_js.default.enc.Utf8);
+    if (!plain || plain.indexOf("{") !== 0)
+      return null;
+    return JSON.parse(plain);
+  } catch (e) {
+    return null;
+  }
+}
+function pickBestByseSource(sources) {
+  if (!sources || !sources.length)
+    return null;
+  var best = null;
+  var bestScore = -1;
+  for (var i = 0; i < sources.length; i++) {
+    var s = sources[i] || {};
+    var url = s.url || s.file;
+    if (typeof url !== "string" || url.indexOf("http") !== 0)
+      continue;
+    var score = 0;
+    var label = String(s.label || "");
+    var m = label.match(/(\d{3,4})/);
+    if (m)
+      score = parseInt(m[1], 10);
+    if (url.indexOf(".m3u8") !== -1)
+      score += 0.5;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { url, label };
+    }
+  }
+  return best;
+}
 function resolveFilemoonStream(embedUrl) {
   return __async(this, null, function* () {
     try {
-      const defaultHeaders = {
-        "Referer": embedUrl,
-        "Sec-Fetch-Dest": "iframe",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0"
-      };
-      const initialResponse = yield fetchWithRetry(embedUrl, {
-        headers: __spreadProps(__spreadValues({}, defaultHeaders), { Referer: "https://embed69.org/" })
-      });
-      const iframeSrc = initialResponse.match(/<iframe[^>]*src=["']([^"']+)["']/i);
-      if (iframeSrc) {
-        let iframeUrl = iframeSrc[1];
-        if (!iframeUrl.startsWith("http")) {
-          iframeUrl = getUrlOrigin(embedUrl) + iframeUrl;
-        }
-        const iframeHtml = yield fetchWithRetry(iframeUrl, {
-          headers: __spreadProps(__spreadValues({}, defaultHeaders), { "Accept-Language": "en-US,en;q=0.5", Referer: embedUrl })
-        });
-        const unpacked2 = unpackPacked(iframeHtml);
-        if (unpacked2) {
-          const videoMatch = unpacked2.match(/sources:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/i);
-          if (videoMatch) {
-            let url = videoMatch[1];
-            if (!url.startsWith("http"))
-              url = getUrlOrigin(iframeUrl) + url;
-            const quality = yield detectQualityFromM3U8(url);
-            return { url, quality, headers: { Referer: getUrlOrigin(iframeUrl) + "/" } };
+      const m = String(embedUrl || "").match(/\/(?:e|d|v)\/([A-Za-z0-9_-]+)/);
+      if (!m)
+        return null;
+      const code = m[1];
+      const origin = getUrlOrigin(embedUrl);
+      if (!origin)
+        return null;
+      try {
+        const data = yield fetchJson(origin + "/api/videos/" + code + "/", {
+          headers: {
+            "Referer": embedUrl,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json,*/*;q=0.8"
           }
+        });
+        if (data && data.playback && data.playback.payload) {
+          const plain = byseDecryptPlayback(data.playback);
+          const best = pickBestByseSource(plain && plain.sources);
+          if (best) {
+            const quality = yield detectQualityFromM3U8(best.url);
+            return { url: best.url, quality, headers: { Referer: origin + "/" } };
+          }
+          return null;
         }
         return null;
+      } catch (e) {
+        return null;
       }
-      const unpacked = unpackPacked(initialResponse);
-      if (unpacked) {
-        const videoMatch = unpacked.match(/sources:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/i);
-        if (videoMatch) {
-          let url = videoMatch[1];
-          if (!url.startsWith("http"))
-            url = getUrlOrigin(embedUrl) + url;
-          const quality = yield detectQualityFromM3U8(url);
-          return { url, quality, headers: { Referer: getUrlOrigin(embedUrl) + "/" } };
-        }
-      }
-      return null;
     } catch (e) {
       return null;
     }
@@ -786,15 +852,55 @@ function resolveVidaraStream(embedUrl) {
 }
 function resolveOkRuStream(embedUrl) {
   return __async(this, null, function* () {
-    try {
-      const html = yield fetchWithRetry(embedUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
-          Referer: "https://ok.ru/"
+    const UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    const HEADERS = {
+      "User-Agent": UA2,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
+      Referer: "https://ok.ru/"
+    };
+    function pickBestVideo(videos) {
+      if (!videos || !videos.length)
+        return null;
+      let best = null;
+      let bestScore = -1;
+      for (let i = 0; i < videos.length; i++) {
+        const v = videos[i] || {};
+        const url = v.url;
+        if (typeof url !== "string" || url.indexOf("http") !== 0)
+          continue;
+        let score = 0;
+        const km = String(v.key || v.name || "").match(/(\d{3,4})/);
+        if (km)
+          score = parseInt(km[1], 10);
+        else if (/hd/i.test(String(v.key)))
+          score = 720;
+        else if (/sd/i.test(String(v.key)))
+          score = 480;
+        if (url.indexOf(".m3u8") !== -1)
+          score += 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          best = url;
         }
-      });
+      }
+      return best;
+    }
+    try {
+      const idm = String(embedUrl || "").match(/video(?:embed)?\/(\d+)/) || String(embedUrl || "").match(/(\d{8,})/);
+      if (idm) {
+        try {
+          const meta = yield fetchJson("https://my.mail.ru/+/video/meta/" + idm[1], {
+            headers: { "User-Agent": UA2, "Referer": "https://my.mail.ru/", "Accept": "application/json,*/*;q=0.8" }
+          });
+          const best = pickBestVideo(meta && meta.videos);
+          if (best) {
+            return { url: best, quality: "720p", headers: { Referer: "https://ok.ru/", "User-Agent": UA2 } };
+          }
+        } catch (e) {
+        }
+      }
+      const html = yield fetchWithRetry(embedUrl, { headers: HEADERS });
       let m = html.match(/hlsManifestUrl(?:&quot;|"):(?:&quot;|")([^"&]+?)(?:&quot;|")/);
       if (!m)
         return null;
@@ -806,8 +912,63 @@ function resolveOkRuStream(embedUrl) {
         quality: "720p",
         headers: {
           Referer: "https://ok.ru/",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+          "User-Agent": UA2
         }
+      };
+    } catch (e) {
+      return null;
+    }
+  });
+}
+function resolveMixdropStream(embedUrl) {
+  return __async(this, null, function* () {
+    try {
+      const html = yield fetchWithRetry(embedUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": embedUrl
+        }
+      });
+      if (!html || html.indexOf("/lander") !== -1)
+        return null;
+      const unpacked = unpackPacked(html);
+      const src = unpacked || html;
+      let m = src.match(/MDCore\s*\.\s*wurl\s*=\s*"([^"]+)"/) || src.match(/["']wurl["']\s*:\s*["']([^"']+)["']/) || src.match(/\bwurl\s*=\s*"([^"]+)"/) || src.match(/\bvfile\s*=\s*"([^"]+)"/) || src.match(/["']vfile["']\s*:\s*["']([^"']+)["']/);
+      if (!m)
+        return null;
+      let url = m[1].replace(/\\/g, "");
+      if (url.indexOf("//") === 0)
+        url = "https:" + url;
+      if (url.indexOf("http") !== 0)
+        return null;
+      return {
+        url,
+        quality: "HD",
+        headers: { Referer: getUrlOrigin(embedUrl) + "/" }
+      };
+    } catch (e) {
+      return null;
+    }
+  });
+}
+function resolveMp4uploadStream(embedUrl) {
+  return __async(this, null, function* () {
+    try {
+      const html = yield fetchWithRetry(embedUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": "https://www.mp4upload.com/"
+        }
+      });
+      if (!html)
+        return null;
+      let m = html.match(/player\.src\(\{\s*type:\s*"video\/mp4",\s*src:\s*"([^"]+)"/) || html.match(/type:\s*"video\/mp4",\s*src:\s*"([^"]+)"/) || html.match(/"src"\s*:\s*"(https?:[^"]+\.mp4[^"]*)"/);
+      if (!m)
+        return null;
+      return {
+        url: m[1],
+        quality: "HD",
+        headers: { Referer: "https://www.mp4upload.com/" }
       };
     } catch (e) {
       return null;
@@ -851,11 +1012,17 @@ function getEmbedResolver(url) {
   if (url.includes("doodstream") || url.includes("dsvplay") || url.includes("dood.to") || url.includes("dood.watch") || url.includes("dood.so")) {
     return resolveDoodStream;
   }
+  if (url.includes("mixdrop")) {
+    return resolveMixdropStream;
+  }
+  if (url.includes("mp4upload")) {
+    return resolveMp4uploadStream;
+  }
   return null;
 }
 
 // src/shared/rpmvid.js
-var import_crypto_js = __toESM(require("crypto-js"));
+var import_crypto_js2 = __toESM(require("crypto-js"));
 var EMBED_ORIGIN = "https://cubeembed.rpmvid.com";
 var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
 var cryptoFactoryCache = null;
@@ -955,11 +1122,11 @@ function deriveKeyIv(hash) {
 }
 function decryptHex(hex, hash) {
   var d = deriveKeyIv(hash);
-  var keyWA = import_crypto_js.default.enc.Hex.parse(bytesToHex(d.key));
-  var ivWA = import_crypto_js.default.enc.Hex.parse(bytesToHex(d.iv));
-  var cipherParams = import_crypto_js.default.lib.CipherParams.create({ ciphertext: import_crypto_js.default.enc.Hex.parse(hex.trim()) });
-  var decrypted = import_crypto_js.default.AES.decrypt(cipherParams, keyWA, { iv: ivWA, mode: import_crypto_js.default.mode.CBC, padding: import_crypto_js.default.pad.Pkcs7 });
-  var plain = decrypted.toString(import_crypto_js.default.enc.Utf8);
+  var keyWA = import_crypto_js2.default.enc.Hex.parse(bytesToHex(d.key));
+  var ivWA = import_crypto_js2.default.enc.Hex.parse(bytesToHex(d.iv));
+  var cipherParams = import_crypto_js2.default.lib.CipherParams.create({ ciphertext: import_crypto_js2.default.enc.Hex.parse(hex.trim()) });
+  var decrypted = import_crypto_js2.default.AES.decrypt(cipherParams, keyWA, { iv: ivWA, mode: import_crypto_js2.default.mode.CBC, padding: import_crypto_js2.default.pad.Pkcs7 });
+  var plain = decrypted.toString(import_crypto_js2.default.enc.Utf8);
   if (!plain)
     throw new Error("empty decrypt");
   return JSON.parse(plain);
@@ -1332,6 +1499,37 @@ function qualityRank(q) {
 function isM3u8(url) {
   return /\.m3u8(\?|#|$)/i.test(url || "");
 }
+function hasVideoExtension(url) {
+  return /\.(mp4|m3u8|mkv|webm|ts|m4v|mov)(\?|#|$)/i.test(url || "");
+}
+function isVideoResponse(contentType, url) {
+  var ct = "";
+  try {
+    ct = String(contentType || "").toLowerCase().split(";")[0].trim();
+  } catch (e) {
+    ct = "";
+  }
+  if (ct.indexOf("video/") === 0)
+    return true;
+  if (ct === "application/vnd.apple.mpegurl" || ct === "application/x-mpegurl")
+    return true;
+  if (ct === "application/octet-stream" || ct === "binary/octet-stream") {
+    return hasVideoExtension(url);
+  }
+  if (!ct) {
+    return hasVideoExtension(url);
+  }
+  return false;
+}
+function getContentType(res) {
+  try {
+    if (res && res.headers && typeof res.headers.get === "function") {
+      return res.headers.get("content-type");
+    }
+  } catch (e) {
+  }
+  return "";
+}
 function checkUrl(url, headers, timeoutMs) {
   return new Promise(function(resolve) {
     var done = false;
@@ -1395,6 +1593,15 @@ function checkUrl(url, headers, timeoutMs) {
           }).catch(function() {
             finish(true);
           });
+        } else if (status === 416) {
+          finish(true);
+        } else if (!isVideoResponse(getContentType(res), url)) {
+          try {
+            if (controller)
+              controller.abort();
+          } catch (e) {
+          }
+          finish(false);
         } else {
           finish(true);
         }
