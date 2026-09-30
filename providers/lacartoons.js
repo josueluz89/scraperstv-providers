@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-09-29T16:38:01.561Z
+ * Generated: 2026-09-30T22:03:23.395Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -1233,6 +1233,26 @@ function normalizeText(text) {
     return "";
   return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
 }
+var TITLE_ALIASES = [
+  { match: ["casper"], extra: ["gasparin", "gasparin y sus amigos"] }
+];
+function aliasQueries(text) {
+  var n = " " + normalizeText(text) + " ";
+  var out = [];
+  for (var i = 0; i < TITLE_ALIASES.length; i++) {
+    var a = TITLE_ALIASES[i];
+    for (var j = 0; j < a.match.length; j++) {
+      if (n.indexOf(" " + a.match[j] + " ") !== -1) {
+        for (var k = 0; k < a.extra.length; k++) {
+          if (out.indexOf(a.extra[k]) < 0)
+            out.push(a.extra[k]);
+        }
+        break;
+      }
+    }
+  }
+  return out;
+}
 function getMediaTitle(tmdbId, tmdbType) {
   var url = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY + "&language=es-MX";
   return fetchJson(url).then(function(data) {
@@ -1280,17 +1300,31 @@ function searchSite(query) {
 function pickBest(cands, media) {
   var no = normalizeText(media.originalTitle || "");
   var nt = normalizeText(media.title || "");
+  var names = [no, nt];
+  var alias = media.aliasTitles || [];
+  for (var ai = 0; ai < alias.length; ai++) {
+    var na = normalizeText(alias[ai]);
+    if (na && names.indexOf(na) < 0)
+      names.push(na);
+  }
   var best = null, bestScore = -1;
   for (var i = 0; i < cands.length; i++) {
     var c = cands[i];
     var nc = normalizeText(c.title);
     var score = 0;
-    if (nc === no || nc === nt)
+    if (names.indexOf(nc) !== -1)
       score = 100;
-    else if (no && (nc.indexOf(no) !== -1 || no.indexOf(nc) !== -1) || nt && (nc.indexOf(nt) !== -1 || nt.indexOf(nc) !== -1))
-      score = 80;
+    else {
+      for (var ni = 0; ni < names.length; ni++) {
+        var nn = names[ni];
+        if (nn && (nc.indexOf(nn) !== -1 || nn.indexOf(nc) !== -1)) {
+          score = 80;
+          break;
+        }
+      }
+    }
     if (score === 0) {
-      var words = (no + " " + nt).split(" ").filter(function(w2) {
+      var words = names.join(" ").split(" ").filter(function(w2) {
         return w2.length >= 3;
       });
       var qm = 0;
@@ -1377,6 +1411,12 @@ function extractStreams(tmdbId, mediaType, season, episode) {
       queries.push(media.originalTitle);
     if (media.title && media.title !== media.originalTitle)
       queries.push(media.title);
+    var aliasQ = aliasQueries((media.originalTitle || "") + " " + (media.title || ""));
+    for (var aq = 0; aq < aliasQ.length; aq++) {
+      if (queries.indexOf(aliasQ[aq]) < 0)
+        queries.push(aliasQ[aq]);
+    }
+    media.aliasTitles = aliasQ;
     if (!queries.length)
       return [];
     var all = [];

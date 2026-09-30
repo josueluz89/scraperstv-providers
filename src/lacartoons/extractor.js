@@ -12,6 +12,29 @@ function normalizeText(text) {
   return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Aliases: título TMDB -> términos de búsqueda del sitio. lacartoons cataloga
+// en español mientras TMDB a veces solo trae el título en inglés
+// (p. ej. "Casper and Friends" vive en el sitio como "Gasparin y sus amigos").
+var TITLE_ALIASES = [
+  { match: ['casper'], extra: ['gasparin', 'gasparin y sus amigos'] }
+];
+function aliasQueries(text) {
+  var n = ' ' + normalizeText(text) + ' ';
+  var out = [];
+  for (var i = 0; i < TITLE_ALIASES.length; i++) {
+    var a = TITLE_ALIASES[i];
+    for (var j = 0; j < a.match.length; j++) {
+      if (n.indexOf(' ' + a.match[j] + ' ') !== -1) {
+        for (var k = 0; k < a.extra.length; k++) {
+          if (out.indexOf(a.extra[k]) < 0) out.push(a.extra[k]);
+        }
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 function getMediaTitle(tmdbId, tmdbType) {
   var url = 'https://api.themoviedb.org/3/' + tmdbType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY + '&language=es-MX';
   return fetchJson(url).then(function(data) {
@@ -60,15 +83,26 @@ function searchSite(query) {
 function pickBest(cands, media) {
   var no = normalizeText(media.originalTitle || '');
   var nt = normalizeText(media.title || '');
+  var names = [no, nt];
+  var alias = media.aliasTitles || [];
+  for (var ai = 0; ai < alias.length; ai++) {
+    var na = normalizeText(alias[ai]);
+    if (na && names.indexOf(na) < 0) names.push(na);
+  }
   var best = null, bestScore = -1;
   for (var i = 0; i < cands.length; i++) {
     var c = cands[i];
     var nc = normalizeText(c.title);
     var score = 0;
-    if (nc === no || nc === nt) score = 100;
-    else if ((no && (nc.indexOf(no) !== -1 || no.indexOf(nc) !== -1)) || (nt && (nc.indexOf(nt) !== -1 || nt.indexOf(nc) !== -1))) score = 80;
+    if (names.indexOf(nc) !== -1) score = 100;
+    else {
+      for (var ni = 0; ni < names.length; ni++) {
+        var nn = names[ni];
+        if (nn && (nc.indexOf(nn) !== -1 || nn.indexOf(nc) !== -1)) { score = 80; break; }
+      }
+    }
     if (score === 0) {
-      var words = (no + ' ' + nt).split(' ').filter(function(w){ return w.length >= 3; });
+      var words = names.join(' ').split(' ').filter(function(w){ return w.length >= 3; });
       var qm = 0;
       for (var w = 0; w < words.length; w++) if (nc.indexOf(words[w]) !== -1) qm++;
       if (qm === 0) continue;
@@ -147,6 +181,12 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
     var queries = [];
     if (media.originalTitle) queries.push(media.originalTitle);
     if (media.title && media.title !== media.originalTitle) queries.push(media.title);
+    // alias en español para títulos que el sitio cataloga distinto (casper->gasparin)
+    var aliasQ = aliasQueries((media.originalTitle||'') + ' ' + (media.title||''));
+    for (var aq = 0; aq < aliasQ.length; aq++) {
+      if (queries.indexOf(aliasQ[aq]) < 0) queries.push(aliasQ[aq]);
+    }
+    media.aliasTitles = aliasQ;
     if (!queries.length) return [];
 
     var all = [];
