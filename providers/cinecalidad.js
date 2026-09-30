@@ -1,6 +1,6 @@
 /**
  * cinecalidad - Built from src/cinecalidad/
- * Generated: 2026-09-29T16:38:01.525Z
+ * Generated: 2026-09-30T07:10:13.184Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -1067,6 +1067,18 @@ function portalCodeUrl(apiBase, tmdbId, mediaType, season, episode) {
     e = 1;
   return apiBase + "/v1/items/tvshow/" + tmdbId + "/seasons/" + s + "/episodes/" + e;
 }
+function portalPlaybackUrl(apiBase, tmdbId, mediaType, season, episode) {
+  var esPelicula = String(mediaType || "").toLowerCase() === "movie";
+  if (esPelicula)
+    return apiBase + "/v1/playback/movie/" + tmdbId;
+  var s = parseInt(season, 10);
+  if (isNaN(s) || s < 1)
+    s = 1;
+  var e = parseInt(episode, 10);
+  if (isNaN(e) || e < 1)
+    e = 1;
+  return apiBase + "/v1/playback/tvshow/" + tmdbId + "?season=" + s + "&episode=" + e;
+}
 function portalCode(data) {
   if (!data || typeof data !== "object")
     return "";
@@ -1082,63 +1094,76 @@ function portalTitles(apiBase, tmdbId, mediaType, season, episode) {
 }
 function extraerPortal(apiBase, player, tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
-    var data = null;
+    var embeds = [];
     try {
-      data = yield portalTitles(apiBase, tmdbId, mediaType, season, episode);
+      var data = yield fetchJson(portalPlaybackUrl(apiBase, tmdbId, mediaType, season, episode), {
+        headers: { "User-Agent": UA, Accept: "application/json" }
+      }, 12e3);
+      if (data && data.embeds && data.embeds.length)
+        embeds = data.embeds;
     } catch (e) {
-      return [];
     }
-    var code = portalCode(data);
-    if (!code)
-      return [];
-    var embed = portalPlayerUrl(player, code);
-    if (!embed)
-      return [];
-    var streams = [];
-    var resolver = null;
-    try {
-      resolver = getEmbedResolver(embed);
-    } catch (e) {
-      resolver = null;
-    }
-    if (typeof resolver === "function") {
-      for (var intento = 0; intento < 3 && !streams.length; intento++) {
-        try {
-          var r = yield resolver(embed);
-          if (r && r.url) {
-            var cabeceras = Object.assign({ "User-Agent": UA }, r.headers || {});
-            if (yield urlReproducible(r.url, cabeceras)) {
-              streams.push({
-                title: getServerLabel(embed) + " \xB7 Latino",
-                quality: r.quality || "HD",
-                language: "Latino",
-                url: r.url,
-                headers: cabeceras
-              });
-            }
-          }
-        } catch (e) {
-        }
+    if (!embeds.length) {
+      try {
+        var dataVieja = yield portalTitles(apiBase, tmdbId, mediaType, season, episode);
+        var codigo = portalCode(dataVieja);
+        var embedViejo = portalPlayerUrl(player, codigo);
+        if (embedViejo)
+          embeds = [{ url: embedViejo, host: "", lang: "Latino", quality: "HD" }];
+      } catch (e) {
       }
     }
-    if (streams.length) {
-      streams.push({
-        title: getServerLabel(embed) + " \xB7 Latino (embed)",
-        quality: "HD",
-        language: "Latino",
-        url: embed,
-        headers: { "User-Agent": UA, Referer: embed }
-      });
-      return streams;
-    }
-    if (!streams.length) {
-      streams.push({
-        title: getServerLabel(embed) + " \xB7 Latino (embed)",
-        quality: "HD",
-        language: "Latino",
-        url: embed,
-        headers: { "User-Agent": UA, Referer: embed }
-      });
+    if (!embeds.length)
+      return [];
+    var streams = [];
+    var vistos = {};
+    for (var i = 0; i < embeds.length; i++) {
+      var em = embeds[i] || {};
+      var url = em.url;
+      if (!url || vistos[url])
+        continue;
+      vistos[url] = true;
+      var lang = em.lang || "Latino";
+      var etiqueta = getServerLabel(url) + " \xB7 " + lang;
+      var calidad = em.quality || "HD";
+      var resolver = null;
+      try {
+        resolver = getEmbedResolver(url);
+      } catch (e) {
+        resolver = null;
+      }
+      var resuelto = null;
+      if (typeof resolver === "function") {
+        for (var intento = 0; intento < 3 && !resuelto; intento++) {
+          try {
+            var r = yield resolver(url);
+            if (r && r.url) {
+              var cabeceras = Object.assign({ "User-Agent": UA }, r.headers || {});
+              if (yield urlReproducible(r.url, cabeceras)) {
+                resuelto = { url: r.url, headers: cabeceras, quality: r.quality || calidad };
+              }
+            }
+          } catch (e) {
+          }
+        }
+      }
+      if (resuelto) {
+        streams.push({
+          title: etiqueta,
+          quality: resuelto.quality,
+          language: lang,
+          url: resuelto.url,
+          headers: resuelto.headers
+        });
+      } else {
+        streams.push({
+          title: etiqueta + " (embed)",
+          quality: calidad,
+          language: lang,
+          url,
+          headers: { "User-Agent": UA, Referer: url }
+        });
+      }
     }
     return streams;
   });
