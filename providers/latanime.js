@@ -1,6 +1,6 @@
 /**
  * latanime - Built from src/latanime/
- * Generated: 2026-09-29T16:38:01.593Z
+ * Generated: 2026-09-30T06:59:13.360Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -1142,21 +1142,41 @@ function tituloDeHtml(html) {
 }
 function tmdbTitulos(tmdbId, mediaType) {
   var tipo = mediaType === "movie" ? "movie" : "tv";
-  var url = "https://api.themoviedb.org/3/" + tipo + "/" + tmdbId + "?api_key=" + TMDB_KEY + "&language=es-MX";
-  return fetchText(url).then(function(raw) {
+  var base = "https://api.themoviedb.org/3/" + tipo + "/" + tmdbId + "?api_key=" + TMDB_KEY + "&language=";
+  function deRaw(raw) {
+    var t = [];
     var d = null;
     try {
       d = JSON.parse(raw);
     } catch (e) {
-      return [];
+      return t;
     }
-    var t = [];
+    if (!d)
+      return t;
     var principal = d.title != null ? d.title : d.name;
     var original = d.original_title != null ? d.original_title : d.original_name;
     if (principal)
       t.push(principal);
-    if (original)
+    if (original && original !== principal)
       t.push(original);
+    return t;
+  }
+  return Promise.all([
+    fetchText(base + "es-MX").catch(function() {
+      return null;
+    }),
+    fetchText(base + "en-US").catch(function() {
+      return null;
+    })
+  ]).then(function(raws) {
+    var t = [];
+    for (var i = 0; i < raws.length; i++) {
+      var tt = deRaw(raws[i]);
+      for (var j = 0; j < tt.length; j++) {
+        if (t.indexOf(tt[j]) < 0)
+          t.push(tt[j]);
+      }
+    }
     return t;
   }).catch(function() {
     return [];
@@ -1366,7 +1386,16 @@ function extraer(tmdbId, mediaType, season, episode) {
     var titulos = yield tmdbTitulos(tmdbId, tipo);
     if (!titulos.length)
       return [];
-    var queries = [titulos[0]];
+    var queries = [];
+    for (var ti = 0; ti < titulos.length; ti++) {
+      var tt = titulos[ti];
+      if (!tt || /[^\x00-\x7F]/.test(tt))
+        continue;
+      if (queries.indexOf(tt) < 0)
+        queries.push(tt);
+    }
+    if (!queries.length)
+      queries = [titulos[0]];
     var palabras = norm(titulos[0]).split(" ").filter(function(w) {
       return w.length > 3 && ["temporada", "season", "parte", "the", "los", "las"].indexOf(w) < 0;
     });
@@ -1390,8 +1419,6 @@ function extraer(tmdbId, mediaType, season, episode) {
           slugs.push(encontrados[i]);
         }
       }
-      if (slugs.length >= 6)
-        break;
     }
     if (!slugs.length)
       return [];

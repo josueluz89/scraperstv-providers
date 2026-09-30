@@ -1,6 +1,6 @@
 {
   "name": "MasterScrap Providers",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "scrapers": [
     {
       "id": "cinecalidad",
@@ -132,7 +132,7 @@
       "id": "latanime",
       "name": "Latanime (solo Latino)",
       "description": "Anime SOLO en latino de latanime.org: descarta lo marcado como castellano y exige que el slug o el título confirmen latino. Verificado: 15 animes con streams. Solo video directo reproducible (validados en vivo).",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "author": "Masters",
       "supportedTypes": [
         "tv"

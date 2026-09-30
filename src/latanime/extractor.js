@@ -98,27 +98,44 @@ function tituloDeHtml(html) {
 // ── TMDB ───────────────────────────────────────────────────────────────────
 function tmdbTitulos(tmdbId, mediaType) {
   var tipo = mediaType === 'movie' ? 'movie' : 'tv';
-  var url =
+  var base =
     'https://api.themoviedb.org/3/' +
     tipo +
     '/' +
     tmdbId +
     '?api_key=' +
     TMDB_KEY +
-    '&language=es-MX';
-  return fetchText(url)
-    .then(function (raw) {
-      var d = null;
-      try {
-        d = JSON.parse(raw);
-      } catch (e) {
-        return [];
-      }
+    '&language=';
+  function deRaw(raw) {
+    var t = [];
+    var d = null;
+    try {
+      d = JSON.parse(raw);
+    } catch (e) {
+      return t;
+    }
+    if (!d) return t;
+    var principal = d.title != null ? d.title : d.name;
+    var original = d.original_title != null ? d.original_title : d.original_name;
+    if (principal) t.push(principal);
+    if (original && original !== principal) t.push(original);
+    return t;
+  }
+  // es-MX primero y en-US después: el título en inglés (p. ej. "Saint Seiya")
+  // suele ser el que el buscador del sitio reconoce cuando el título
+  // localizado ("Los Caballeros del Zodiaco") no devuelve la serie clásica.
+  return Promise.all([
+    fetchText(base + 'es-MX').catch(function () { return null; }),
+    fetchText(base + 'en-US').catch(function () { return null; }),
+  ])
+    .then(function (raws) {
       var t = [];
-      var principal = d.title != null ? d.title : d.name;
-      var original = d.original_title != null ? d.original_title : d.original_name;
-      if (principal) t.push(principal);
-      if (original) t.push(original);
+      for (var i = 0; i < raws.length; i++) {
+        var tt = deRaw(raws[i]);
+        for (var j = 0; j < tt.length; j++) {
+          if (t.indexOf(tt[j]) < 0) t.push(tt[j]);
+        }
+      }
       return t;
     })
     .catch(function () {
@@ -355,8 +372,16 @@ async function extraer(tmdbId, mediaType, season, episode) {
   var titulos = await tmdbTitulos(tmdbId, tipo);
   if (!titulos.length) return [];
 
-  // búsqueda: título completo y, si no hay nada, la palabra más distintiva
-  var queries = [titulos[0]];
+  // búsqueda: la frase completa de cada título en alfabeto latino
+  // (el japonés/chino no sirve en el buscador del sitio) y, si no hay
+  // nada, la palabra más distintiva
+  var queries = [];
+  for (var ti = 0; ti < titulos.length; ti++) {
+    var tt = titulos[ti];
+    if (!tt || /[^\x00-\x7F]/.test(tt)) continue;
+    if (queries.indexOf(tt) < 0) queries.push(tt);
+  }
+  if (!queries.length) queries = [titulos[0]];
   var palabras = norm(titulos[0])
     .split(' ')
     .filter(function (w) {
@@ -378,6 +403,8 @@ async function extraer(tmdbId, mediaType, season, episode) {
 
   var slugs = [];
   var vistos = {};
+  // sin corte anticipado: todas las frases se prueban y el scoring
+  // (puntuar + elegirCandidato) descarta el ruido
   for (var q = 0; q < queries.length; q++) {
     var encontrados = await buscar(queries[q]);
     for (var i = 0; i < encontrados.length; i++) {
@@ -386,7 +413,6 @@ async function extraer(tmdbId, mediaType, season, episode) {
         slugs.push(encontrados[i]);
       }
     }
-    if (slugs.length >= 6) break;
   }
   if (!slugs.length) return [];
 
