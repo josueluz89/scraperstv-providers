@@ -444,8 +444,8 @@
     {
       "id": "lacartoons",
       "name": "LaCartoons",
-      "description": "Rehabilitado 2026-09-29: sitio arriba y verificado en vivo (Los Simpson S1E1 devuelve m3u8 funcional). 2026-09-30: alias de títulos ES (casper->gasparin) + scoring por alias. Series animadas en latino (Cartoon Network, Nickelodeon, Disney…). Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.4",
+      "description": "Rehabilitado 2026-09-29. 2026-09-30: alias ES (casper->gasparin) + scoring por alias + API de catalogo (getCatalogo/getSerie/getStreamCapitulo para la seccion Cartoons). Series animadas en latino (Cartoon Network, Nickelodeon, Disney…). Solo video directo reproducible (validados en vivo).",
+      "version": "1.0.5",
       "author": "Masters",
       "supportedTypes": [
         "tv"

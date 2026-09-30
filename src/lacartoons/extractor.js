@@ -159,7 +159,7 @@ function extractEpisodeUrl(serieHtml, season, episode) {
   return null;
 }
 
-function extractIframeSrc(capituloHtml) {
+export function extractIframeSrc(capituloHtml) {
   var m = capituloHtml.match(/<iframe[^>]*src="([^"]+)"[^>]*>/i);
   if (m) return m[1].replace(/&amp;/g, '&');
   // fallback: any cubeembed/rpmvid url in page
@@ -168,6 +168,46 @@ function extractIframeSrc(capituloHtml) {
   var m3 = capituloHtml.match(/https?:\/\/[^"']*cubeembed[^"']*/i);
   if (m3) return m3[0];
   return null;
+}
+
+/**
+ * Resuelve el iframe de un capítulo a stream directo. Lógica compartida entre
+ * la búsqueda por TMDB (extractStreams) y el catálogo directo (catalogo.js).
+ * Devuelve array de 0-1 streams con la forma LocalScraperResult del runtime.
+ */
+export function resolveCapituloIframe(iframeSrc, season, episode) {
+  season = parseInt(season, 10) || 1;
+  episode = parseInt(episode, 10) || 1;
+  if (!iframeSrc) return Promise.resolve([]);
+  // normalize protocol-relative
+  if (iframeSrc.indexOf('//') === 0) iframeSrc = 'https:' + iframeSrc;
+  if (iframeSrc.indexOf('http') !== 0) {
+    if (iframeSrc.indexOf('/') === 0) iframeSrc = 'https://cubeembed.rpmvid.com' + iframeSrc;
+    else iframeSrc = 'https://' + iframeSrc;
+  }
+
+  if (isRpmvidIframe(iframeSrc)) {
+    return resolveRpmvidStream(iframeSrc).then(function(r) {
+      if (r && r.url) {
+        return [{ name: 'LaCartoons (Rpmvid)', title: (r.quality || '720p') + ' \u00b7 LAT \u00b7 Rpmvid S' + season + 'E' + episode, url: r.url, quality: r.quality || '720p', headers: r.headers }];
+      }
+      return [];
+    }).catch(function(){ return []; });
+  }
+
+  // fallback to generic resolvers (ok.ru etc)
+  var fixed = iframeSrc;
+  try { fixed = decodeURIComponent(fixed); } catch(e){}
+  var resolver = getEmbedResolver(fixed);
+  if (!resolver) return Promise.resolve([]);
+  return resolver(fixed).then(function(r) {
+    if (r && r.url) {
+      var host = '';
+      try { host = fixed.split('/')[2]; } catch(e){}
+      return [{ name: 'LaCartoons (' + host + ')', title: (r.quality || 'HD') + ' \u00b7 LAT \u00b7 ' + host + ' S' + season + 'E' + episode, url: r.url, quality: r.quality || 'HD', headers: r.headers }];
+    }
+    return [];
+  }).catch(function(){ return []; });
 }
 
 export function extractStreams(tmdbId, mediaType, season, episode) {
@@ -221,36 +261,7 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
         var epUrl = epPath.indexOf('http') === 0 ? epPath : BASE_URL + epPath;
         return fetchText(epUrl, { headers: { Referer: best.href } }).then(function(capHtml) {
           var iframeSrc = extractIframeSrc(capHtml);
-          if (!iframeSrc) return [];
-          // normalize protocol-relative
-          if (iframeSrc.indexOf('//') === 0) iframeSrc = 'https:' + iframeSrc;
-          if (iframeSrc.indexOf('http') !== 0) {
-            if (iframeSrc.indexOf('/') === 0) iframeSrc = 'https://cubeembed.rpmvid.com' + iframeSrc;
-            else iframeSrc = 'https://' + iframeSrc;
-          }
-
-          if (isRpmvidIframe(iframeSrc)) {
-            return resolveRpmvidStream(iframeSrc).then(function(r) {
-              if (r && r.url) {
-                return [{ name: 'LaCartoons (Rpmvid)', title: (r.quality || '720p') + ' \u00b7 LAT \u00b7 Rpmvid S' + season + 'E' + episode, url: r.url, quality: r.quality || '720p', headers: r.headers }];
-              }
-              return [];
-            }).catch(function(){ return []; });
-          }
-
-          // fallback to generic resolvers (ok.ru etc)
-          var fixed = iframeSrc;
-          try { fixed = decodeURIComponent(fixed); } catch(e){}
-          var resolver = getEmbedResolver(fixed);
-          if (!resolver) return [];
-          return resolver(fixed).then(function(r) {
-            if (r && r.url) {
-              var host = '';
-              try { host = fixed.split('/')[2]; } catch(e){}
-              return [{ name: 'LaCartoons (' + host + ')', title: (r.quality || 'HD') + ' \u00b7 LAT \u00b7 ' + host + ' S' + season + 'E' + episode, url: r.url, quality: r.quality || 'HD', headers: r.headers }];
-            }
-            return [];
-          }).catch(function(){ return []; });
+          return resolveCapituloIframe(iframeSrc, season, episode);
         });
       });
     });

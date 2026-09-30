@@ -1,4 +1,5 @@
 import { extractStreams } from './extractor.js';
+import { getCatalogo, getSerie, getStreamCapitulo } from './catalogo.js';
 import { withWorkingStreams } from '../shared/validate.js';
 function withTimeout(promise, ms) {
   if (typeof setTimeout === 'undefined') return promise;
@@ -13,4 +14,4 @@ function getStreams(tmdbId, mediaType, season, episode) {
     40000
   ));
 }
-module.exports = { getStreams };
+module.exports = { getStreams, getCatalogo, getSerie, getStreamCapitulo };
