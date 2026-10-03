@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-09-30T23:54:27.478Z
+ * Generated: 2026-10-03T05:51:52.283Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -1415,7 +1415,7 @@ function resolveCapituloIframe(iframeSrc, season, episode) {
   if (isRpmvidIframe(iframeSrc)) {
     return resolveRpmvidStream(iframeSrc).then(function(r) {
       if (r && r.url) {
-        return [{ name: "LaCartoons (Rpmvid)", title: (r.quality || "720p") + " \xB7 LAT \xB7 Rpmvid S" + season + "E" + episode, url: r.url, quality: r.quality || "720p", headers: r.headers }];
+        return [{ name: "LaCartoons (Rpmvid)", title: (r.quality || "720p") + " \xB7 LAT \xB7 Rpmvid S" + season + "E" + episode, url: r.url, quality: r.quality || "720p", language: "Latino", headers: r.headers }];
       }
       return [];
     }).catch(function() {
@@ -1437,7 +1437,7 @@ function resolveCapituloIframe(iframeSrc, season, episode) {
         host = fixed.split("/")[2];
       } catch (e) {
       }
-      return [{ name: "LaCartoons (" + host + ")", title: (r.quality || "HD") + " \xB7 LAT \xB7 " + host + " S" + season + "E" + episode, url: r.url, quality: r.quality || "HD", headers: r.headers }];
+      return [{ name: "LaCartoons (" + host + ")", title: (r.quality || "HD") + " \xB7 LAT \xB7 " + host + " S" + season + "E" + episode, url: r.url, quality: r.quality || "HD", language: "Latino", headers: r.headers }];
     }
     return [];
   }).catch(function() {
