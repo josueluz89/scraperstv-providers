@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-10-03T15:29:34.795Z
+ * Generated: 2026-10-03T15:47:57.800Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7579,106 +7579,12 @@ function getEmbedResolver(url) {
 var import_crypto_js2 = __toESM(require_crypto_js());
 var EMBED_ORIGIN = "https://cubeembed.rpmvid.com";
 var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
-var cryptoFactoryCache = null;
-function bytesToHex(bytes) {
-  var hex = "";
-  for (var i = 0; i < bytes.length; i++) {
-    var h = bytes[i].toString(16);
-    if (h.length === 1)
-      h = "0" + h;
-    hex += h;
-  }
-  return hex;
-}
-function utf8Encode(s) {
-  var out = [];
-  for (var i = 0; i < s.length; i++) {
-    var c = s.charCodeAt(i);
-    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      var lo = s.charCodeAt(i + 1);
-      if (lo >= 56320 && lo <= 57343) {
-        c = 65536 + (c - 55296 << 10) + (lo - 56320);
-        i++;
-      }
-    }
-    if (c < 128)
-      out.push(c);
-    else if (c < 2048)
-      out.push(192 | c >> 6, 128 | c & 63);
-    else if (c < 65536)
-      out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
-    else
-      out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
-  }
-  return new Uint8Array(out);
-}
-function TEPoly() {
-}
-TEPoly.prototype.encode = function(s) {
-  return utf8Encode(s);
-};
-function buildWindowMock(hash) {
-  return {
-    location: {
-      protocol: "https:",
-      hash: "#" + hash,
-      href: EMBED_ORIGIN + "/#" + hash
-    },
-    screen: { width: 1280, height: 720 },
-    innerWidth: 1280,
-    innerHeight: 720,
-    TextEncoder: TEPoly,
-    TextDecoder: TEPoly
-  };
-}
-function loadCryptoFactory() {
-  return __async(this, null, function* () {
-    if (cryptoFactoryCache)
-      return cryptoFactoryCache;
-    var html = yield fetchText(EMBED_ORIGIN + "/", { headers: { "User-Agent": UA } });
-    var scriptMatch = html.match(/src="(\/assets\/index-[a-zA-Z0-9_-]+\.js)"/);
-    if (!scriptMatch)
-      throw new Error("cubeembed player script not found");
-    var js = yield fetchText(EMBED_ORIGIN + scriptMatch[1], {
-      headers: { "User-Agent": UA, Referer: EMBED_ORIGIN + "/" }
-    });
-    var vaStart = js.indexOf("function Va(){");
-    if (vaStart === -1)
-      throw new Error("Va table not found");
-    var feSrc = "function fe(s,e){return s=s-120,Va()[s]}";
-    var feIdx = js.indexOf(feSrc, vaStart);
-    if (feIdx === -1)
-      throw new Error("fe decoder not found");
-    var vaBlock = js.slice(vaStart, feIdx) + feSrc;
-    var shuffleMatch = js.match(/\(function\(s,e\)\{const t=fe[\s\S]*?\}\)\(Va,\d+\);/);
-    if (!shuffleMatch)
-      throw new Error("table shuffle not found");
-    var hStart = js.indexOf("P=x=>{const p=fe;return new Uint8Array");
-    if (hStart === -1)
-      throw new Error("crypto helpers not found");
-    var kIdx = js.indexOf(",K=async", hStart);
-    if (kIdx === -1)
-      throw new Error("crypto helpers end not found");
-    var helpersBlock = "var " + js.slice(hStart, kIdx) + ";";
-    var src = vaBlock + "\n" + shuffleMatch[0] + "\n" + helpersBlock + "\nreturn {Q:Q,se:se};";
-    cryptoFactoryCache = new Function("window", src);
-    return cryptoFactoryCache;
-  });
-}
-function deriveKeyIv(hash) {
-  var factory = cryptoFactoryCache;
-  var fns = factory(buildWindowMock(hash));
-  var key = fns.Q();
-  var iv = fns.se();
-  key = key instanceof Uint8Array ? key : new Uint8Array(key);
-  iv = iv instanceof Uint8Array ? iv : new Uint8Array(iv);
-  return { key: key.slice(0, 16), iv: iv.slice(0, 16) };
-}
-function decryptHex(hex, hash) {
-  var d = deriveKeyIv(hash);
-  var keyWA = import_crypto_js2.default.enc.Hex.parse(bytesToHex(d.key));
-  var ivWA = import_crypto_js2.default.enc.Hex.parse(bytesToHex(d.iv));
-  var cipherParams = import_crypto_js2.default.lib.CipherParams.create({ ciphertext: import_crypto_js2.default.enc.Hex.parse(hex.trim()) });
+var RPMVID_KEY_HEX = "6b69656d7469656e6d75613931316361";
+var RPMVID_IV_HEX = "313233343536373839306f6975797472";
+function decryptHex(hex) {
+  var keyWA = import_crypto_js2.default.enc.Hex.parse(RPMVID_KEY_HEX);
+  var ivWA = import_crypto_js2.default.enc.Hex.parse(RPMVID_IV_HEX);
+  var cipherParams = import_crypto_js2.default.lib.CipherParams.create({ ciphertext: import_crypto_js2.default.enc.Hex.parse(String(hex).trim()) });
   var decrypted = import_crypto_js2.default.AES.decrypt(cipherParams, keyWA, { iv: ivWA, mode: import_crypto_js2.default.mode.CBC, padding: import_crypto_js2.default.pad.Pkcs7 });
   var plain = decrypted.toString(import_crypto_js2.default.enc.Utf8);
   if (!plain)
@@ -7745,14 +7651,13 @@ function collectHlsUrls(data) {
 }
 function fetchVideoData(hash) {
   return __async(this, null, function* () {
-    yield loadCryptoFactory();
     var url = EMBED_ORIGIN + "/api/v1/video?id=" + encodeURIComponent(hash) + "&w=1280&h=720&r=lacartoons.com";
     var hex = yield fetchText(url, {
       headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN, "User-Agent": UA }
     });
     if (!/^[0-9a-f]+$/i.test(String(hex).trim()))
       throw new Error("rpmvid not hex");
-    return decryptHex(hex, hash);
+    return decryptHex(hex);
   });
 }
 function resolveRpmvidStream(iframeSrc) {
