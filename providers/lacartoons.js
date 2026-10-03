@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-10-03T15:47:57.800Z
+ * Generated: 2026-10-03T16:17:09.832Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -6668,6 +6668,109 @@ function fetchWithRetry(url, options, retries, timeout) {
   });
 }
 
+// src/shared/rpmvid.js
+var import_crypto_js = __toESM(require_crypto_js());
+var EMBED_ORIGIN = "https://cubeembed.rpmvid.com";
+var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
+var RPMVID_KEY_HEX = "6b69656d7469656e6d75613931316361";
+var RPMVID_IV_HEX = "313233343536373839306f6975797472";
+function decryptHex(hex) {
+  var keyWA = import_crypto_js.default.enc.Hex.parse(RPMVID_KEY_HEX);
+  var ivWA = import_crypto_js.default.enc.Hex.parse(RPMVID_IV_HEX);
+  var cipherParams = import_crypto_js.default.lib.CipherParams.create({ ciphertext: import_crypto_js.default.enc.Hex.parse(String(hex).trim()) });
+  var decrypted = import_crypto_js.default.AES.decrypt(cipherParams, keyWA, { iv: ivWA, mode: import_crypto_js.default.mode.CBC, padding: import_crypto_js.default.pad.Pkcs7 });
+  var plain = decrypted.toString(import_crypto_js.default.enc.Utf8);
+  if (!plain)
+    throw new Error("empty decrypt");
+  return JSON.parse(plain);
+}
+function videoIdFromIframe(iframeSrc) {
+  try {
+    if (!iframeSrc)
+      return null;
+    if (iframeSrc.indexOf("#") !== -1) {
+      var parts = iframeSrc.split("#")[1];
+      if (parts && parts.indexOf("&") !== -1)
+        parts = parts.split("&")[0];
+      if (parts && parts.length > 1)
+        return parts;
+    }
+    var u = new URL(iframeSrc);
+    if (u.hostname.indexOf("rpmvid") === -1 && u.hostname.indexOf("cubeembed") === -1)
+      return null;
+    var id = u.searchParams.get("id");
+    if (!id)
+      id = (u.hash || "").replace(/^#/, "");
+    if (id && id.indexOf("&") !== -1)
+      id = id.split("&")[0];
+    return id && id.length > 1 ? id : null;
+  } catch (e) {
+    if (typeof iframeSrc === "string" && iframeSrc.indexOf("#") !== -1) {
+      var p = iframeSrc.split("#")[1];
+      if (p && p.indexOf("&") !== -1)
+        p = p.split("&")[0];
+      return p && p.length > 1 ? p : null;
+    }
+    return null;
+  }
+}
+function isRpmvidIframe(iframeSrc) {
+  if (!iframeSrc)
+    return false;
+  return iframeSrc.indexOf("rpmvid") !== -1 || iframeSrc.indexOf("cubeembed") !== -1;
+}
+function collectHlsUrls(data) {
+  var urls = [];
+  var origin = EMBED_ORIGIN;
+  if (data.source && data.source.indexOf(".m3u8") !== -1)
+    urls.push(data.source);
+  if (data.cfNative && data.cfNative.indexOf(".m3u8") !== -1)
+    urls.push(data.cfNative);
+  if (data.hlsVideoTiktok) {
+    var rel = data.hlsVideoTiktok.indexOf("http") === 0 ? data.hlsVideoTiktok : origin + data.hlsVideoTiktok;
+    urls.push(rel);
+  }
+  if (data.videoUrl && data.videoUrl.indexOf(".m3u8") !== -1)
+    urls.push(data.videoUrl);
+  var seen = {};
+  var out = [];
+  for (var i = 0; i < urls.length; i++) {
+    if (!seen[urls[i]]) {
+      seen[urls[i]] = 1;
+      out.push(urls[i]);
+    }
+  }
+  return out;
+}
+function fetchVideoData(hash) {
+  return __async(this, null, function* () {
+    var url = EMBED_ORIGIN + "/api/v1/video?id=" + encodeURIComponent(hash) + "&w=1280&h=720&r=lacartoons.com";
+    var hex = yield fetchText(url, {
+      headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN, "User-Agent": UA }
+    });
+    if (!/^[0-9a-f]+$/i.test(String(hex).trim()))
+      throw new Error("rpmvid not hex");
+    return decryptHex(hex);
+  });
+}
+function resolveRpmvidStream(iframeSrc) {
+  return __async(this, null, function* () {
+    try {
+      var hash = videoIdFromIframe(iframeSrc);
+      if (!hash)
+        return null;
+      var data = yield fetchVideoData(hash);
+      var urls = collectHlsUrls(data);
+      if (!urls.length)
+        return null;
+      var best = urls[0];
+      return { url: best, quality: "720p", headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN } };
+    } catch (e) {
+      return null;
+    }
+  });
+}
+
 // src/shared/quality.js
 var KNOWN_QUALITY = {
   vimeos: { h: "720p", n: "480p" },
@@ -6874,7 +6977,7 @@ function resolveVoeStream(embedUrl) {
 }
 
 // src/shared/embedResolvers.js
-var import_crypto_js = __toESM(require_crypto_js());
+var import_crypto_js2 = __toESM(require_crypto_js());
 function getUrlOrigin(url) {
   if (!url)
     return "";
@@ -7043,10 +7146,10 @@ function resolveVidHideProStream(embedUrl) {
 }
 function byseB64ToWordArray(s) {
   try {
-    var norm = String(s || "").replace(/-/g, "+").replace(/_/g, "/");
-    while (norm.length % 4 !== 0)
-      norm += "=";
-    return import_crypto_js.default.enc.Base64.parse(norm);
+    var norm2 = String(s || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (norm2.length % 4 !== 0)
+      norm2 += "=";
+    return import_crypto_js2.default.enc.Base64.parse(norm2);
   } catch (e) {
     return null;
   }
@@ -7084,30 +7187,30 @@ function byseDecryptPlayback(playback) {
       var wa = byseB64ToWordArray(parts[i]);
       if (!wa)
         return null;
-      keyHex += wa.toString(import_crypto_js.default.enc.Hex);
+      keyHex += wa.toString(import_crypto_js2.default.enc.Hex);
     }
-    var keyWA = import_crypto_js.default.enc.Hex.parse(keyHex);
+    var keyWA = import_crypto_js2.default.enc.Hex.parse(keyHex);
     var ivWA = byseB64ToWordArray(playback.iv);
     var fullWA = byseB64ToWordArray(playback.payload);
     if (!keyWA || !ivWA || !fullWA)
       return null;
-    var ivHex = ivWA.toString(import_crypto_js.default.enc.Hex);
+    var ivHex = ivWA.toString(import_crypto_js2.default.enc.Hex);
     if (ivHex.length === 24)
       ivHex = ivHex + "00000002";
-    var ctrIv = import_crypto_js.default.enc.Hex.parse(ivHex);
-    var fullHex = fullWA.toString(import_crypto_js.default.enc.Hex);
+    var ctrIv = import_crypto_js2.default.enc.Hex.parse(ivHex);
+    var fullHex = fullWA.toString(import_crypto_js2.default.enc.Hex);
     if (fullHex.length < 32)
       return null;
     var ctHex = fullHex.substring(0, fullHex.length - 32);
-    var cipherParams = import_crypto_js.default.lib.CipherParams.create({
-      ciphertext: import_crypto_js.default.enc.Hex.parse(ctHex)
+    var cipherParams = import_crypto_js2.default.lib.CipherParams.create({
+      ciphertext: import_crypto_js2.default.enc.Hex.parse(ctHex)
     });
-    var decrypted = import_crypto_js.default.AES.decrypt(cipherParams, keyWA, {
+    var decrypted = import_crypto_js2.default.AES.decrypt(cipherParams, keyWA, {
       iv: ctrIv,
-      mode: import_crypto_js.default.mode.CTR,
-      padding: import_crypto_js.default.pad.NoPadding
+      mode: import_crypto_js2.default.mode.CTR,
+      padding: import_crypto_js2.default.pad.NoPadding
     });
-    var plain = decrypted.toString(import_crypto_js.default.enc.Utf8);
+    var plain = decrypted.toString(import_crypto_js2.default.enc.Utf8);
     if (!plain || plain.indexOf("{") !== 0)
       return null;
     return JSON.parse(plain);
@@ -7575,128 +7678,85 @@ function getEmbedResolver(url) {
   return null;
 }
 
-// src/shared/rpmvid.js
-var import_crypto_js2 = __toESM(require_crypto_js());
-var EMBED_ORIGIN = "https://cubeembed.rpmvid.com";
-var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
-var RPMVID_KEY_HEX = "6b69656d7469656e6d75613931316361";
-var RPMVID_IV_HEX = "313233343536373839306f6975797472";
-function decryptHex(hex) {
-  var keyWA = import_crypto_js2.default.enc.Hex.parse(RPMVID_KEY_HEX);
-  var ivWA = import_crypto_js2.default.enc.Hex.parse(RPMVID_IV_HEX);
-  var cipherParams = import_crypto_js2.default.lib.CipherParams.create({ ciphertext: import_crypto_js2.default.enc.Hex.parse(String(hex).trim()) });
-  var decrypted = import_crypto_js2.default.AES.decrypt(cipherParams, keyWA, { iv: ivWA, mode: import_crypto_js2.default.mode.CBC, padding: import_crypto_js2.default.pad.Pkcs7 });
-  var plain = decrypted.toString(import_crypto_js2.default.enc.Utf8);
-  if (!plain)
-    throw new Error("empty decrypt");
-  return JSON.parse(plain);
-}
-function videoIdFromIframe(iframeSrc) {
-  try {
-    if (!iframeSrc)
-      return null;
-    if (iframeSrc.indexOf("#") !== -1) {
-      var parts = iframeSrc.split("#")[1];
-      if (parts && parts.indexOf("&") !== -1)
-        parts = parts.split("&")[0];
-      if (parts && parts.length > 1)
-        return parts;
-    }
-    var u = new URL(iframeSrc);
-    if (u.hostname.indexOf("rpmvid") === -1 && u.hostname.indexOf("cubeembed") === -1)
-      return null;
-    var id = u.searchParams.get("id");
-    if (!id)
-      id = (u.hash || "").replace(/^#/, "");
-    if (id && id.indexOf("&") !== -1)
-      id = id.split("&")[0];
-    return id && id.length > 1 ? id : null;
-  } catch (e) {
-    if (typeof iframeSrc === "string" && iframeSrc.indexOf("#") !== -1) {
-      var p = iframeSrc.split("#")[1];
-      if (p && p.indexOf("&") !== -1)
-        p = p.split("&")[0];
-      return p && p.length > 1 ? p : null;
-    }
-    return null;
-  }
-}
-function isRpmvidIframe(iframeSrc) {
-  if (!iframeSrc)
-    return false;
-  return iframeSrc.indexOf("rpmvid") !== -1 || iframeSrc.indexOf("cubeembed") !== -1;
-}
-function collectHlsUrls(data) {
-  var urls = [];
-  var origin = EMBED_ORIGIN;
-  if (data.source && data.source.indexOf(".m3u8") !== -1)
-    urls.push(data.source);
-  if (data.cfNative && data.cfNative.indexOf(".m3u8") !== -1)
-    urls.push(data.cfNative);
-  if (data.hlsVideoTiktok) {
-    var rel = data.hlsVideoTiktok.indexOf("http") === 0 ? data.hlsVideoTiktok : origin + data.hlsVideoTiktok;
-    urls.push(rel);
-  }
-  if (data.videoUrl && data.videoUrl.indexOf(".m3u8") !== -1)
-    urls.push(data.videoUrl);
-  var seen = {};
-  var out = [];
-  for (var i = 0; i < urls.length; i++) {
-    if (!seen[urls[i]]) {
-      seen[urls[i]] = 1;
-      out.push(urls[i]);
-    }
-  }
-  return out;
-}
-function fetchVideoData(hash) {
-  return __async(this, null, function* () {
-    var url = EMBED_ORIGIN + "/api/v1/video?id=" + encodeURIComponent(hash) + "&w=1280&h=720&r=lacartoons.com";
-    var hex = yield fetchText(url, {
-      headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN, "User-Agent": UA }
-    });
-    if (!/^[0-9a-f]+$/i.test(String(hex).trim()))
-      throw new Error("rpmvid not hex");
-    return decryptHex(hex);
-  });
-}
-function resolveRpmvidStream(iframeSrc) {
-  return __async(this, null, function* () {
-    try {
-      var hash = videoIdFromIframe(iframeSrc);
-      if (!hash)
-        return null;
-      var data = yield fetchVideoData(hash);
-      var urls = collectHlsUrls(data);
-      if (!urls.length)
-        return null;
-      var best = urls[0];
-      return { url: best, quality: "720p", headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN } };
-    } catch (e) {
-      return null;
-    }
-  });
-}
-
 // src/lacartoons/extractor.js
 var TMDB_API_KEY = "1f54bd990f1cdfb230adb312546d765d";
 var BASE_URL = "https://www.lacartoons.com";
-var ACCENT_MAP = { "\xE1": "a", "\xE9": "e", "\xED": "i", "\xF3": "o", "\xFA": "u", "\xFC": "u", "\xF1": "n", "\xC1": "a", "\xC9": "a", "\xCD": "i", "\xD3": "o", "\xDA": "u", "\xDC": "u", "\xD1": "n", "\xE0": "a", "\xE8": "e", "\xEC": "i", "\xF2": "o", "\xF9": "u", "\xE2": "a", "\xEA": "e", "\xEE": "i", "\xF4": "o", "\xFB": "u", "\xE4": "a", "\xEB": "e", "\xEF": "i", "\xF6": "o", "\xE7": "c", "\xE3": "a", "\xF5": "o" };
+var EMBED_ORIGIN2 = "https://cubeembed.rpmvid.com";
+var ACCENT_MAP = {
+  "\xE1": "a",
+  "\xE9": "e",
+  "\xED": "i",
+  "\xF3": "o",
+  "\xFA": "u",
+  "\xFC": "u",
+  "\xF1": "n",
+  "\xC1": "a",
+  "\xC9": "e",
+  "\xCD": "i",
+  "\xD3": "o",
+  "\xDA": "u",
+  "\xDC": "u",
+  "\xD1": "n",
+  "\xE0": "a",
+  "\xE8": "e",
+  "\xEC": "i",
+  "\xF2": "o",
+  "\xF9": "u",
+  "\xE2": "a",
+  "\xEA": "e",
+  "\xEE": "i",
+  "\xF4": "o",
+  "\xFB": "u",
+  "\xE4": "a",
+  "\xEB": "e",
+  "\xEF": "i",
+  "\xF6": "o",
+  "\xE7": "c",
+  "\xE3": "a",
+  "\xF5": "o"
+};
 function stripAccents(s) {
-  return (s || "").replace(/[^\x00-\x7F]/g, function(c) {
+  return String(s || "").replace(/[^\x00-\x7F]/g, function(c) {
     return ACCENT_MAP[c] || "";
   });
 }
-function normalizeText(text) {
-  if (!text)
-    return "";
-  return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+function norm(s) {
+  return stripAccents(String(s || "").toLowerCase()).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function isLatin(s) {
+  var n = norm(s);
+  return n.length >= 2 && /[a-z]/.test(n);
+}
+function keywords(s) {
+  return norm(s).split(" ").filter(function(w) {
+    return w.length >= 4;
+  });
+}
+function getMediaTitle(tmdbId, tmdbType) {
+  var base = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY;
+  return Promise.all([
+    fetchJson(base + "&language=es-MX").catch(function() {
+      return null;
+    }),
+    fetchJson(base + "&language=en-US").catch(function() {
+      return null;
+    })
+  ]).then(function(rs) {
+    var es = rs[0] || {}, en = rs[1] || {};
+    var isMovie = tmdbType === "movie";
+    return {
+      title: isMovie ? es.title || en.title : es.name || en.name,
+      englishTitle: isMovie ? en.title : en.name,
+      originalTitle: isMovie ? es.original_title || en.original_title : es.original_name || en.original_name
+    };
+  });
 }
 var TITLE_ALIASES = [
-  { match: ["casper"], extra: ["gasparin", "gasparin y sus amigos"] }
+  { match: ["casper"], extra: ["gasparin", "gasparin y sus amigos"] },
+  { match: ["saint seiya"], extra: ["caballeros del zodiaco", "los caballeros del zodiaco"] }
 ];
-function aliasQueries(text) {
-  var n = " " + normalizeText(text) + " ";
+function aliasQueries(title) {
+  var n = " " + norm(title) + " ";
   var out = [];
   for (var i = 0; i < TITLE_ALIASES.length; i++) {
     var a = TITLE_ALIASES[i];
@@ -7712,188 +7772,145 @@ function aliasQueries(text) {
   }
   return out;
 }
-function getMediaTitle(tmdbId, tmdbType) {
-  var base = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY;
-  return Promise.all([
-    fetchJson(base + "&language=es-MX").catch(function() {
-      return null;
-    }),
-    fetchJson(base + "&language=en-US").catch(function() {
-      return null;
-    })
-  ]).then(function(rs) {
-    var es = rs[0] || {}, en = rs[1] || {};
-    var isMovie = tmdbType === "movie";
-    var date = isMovie ? es.release_date || en.release_date : es.first_air_date || en.first_air_date;
-    return {
-      title: isMovie ? es.title || en.title : es.name || en.name,
-      originalTitle: isMovie ? es.original_title || en.original_title : es.original_name || en.original_name,
-      englishTitle: isMovie ? en.title : en.name,
-      year: date && date.length >= 4 ? date.slice(0, 4) : null
-    };
-  });
-}
-function esLatino(t) {
-  if (!t)
-    return false;
-  var n = normalizeText(t);
-  return n.length >= 2 && /[a-z]/.test(n);
+function buildQueries(media) {
+  var seen = {};
+  var out = [];
+  function add(q) {
+    var nq = norm(q);
+    if (nq && nq.length >= 2 && !seen[nq]) {
+      seen[nq] = 1;
+      out.push(q);
+    }
+  }
+  var titles = [media.title, media.englishTitle, media.originalTitle];
+  for (var i = 0; i < titles.length; i++) {
+    if (titles[i] && isLatin(titles[i])) {
+      add(titles[i]);
+      var kw = keywords(titles[i]);
+      for (var j = 0; j < kw.length; j++)
+        add(kw[j]);
+    }
+  }
+  var aliases = aliasQueries(media.title || "").concat(aliasQueries(media.englishTitle || ""));
+  for (var k = 0; k < aliases.length; k++)
+    add(aliases[k]);
+  return out.slice(0, 12);
 }
 function searchSite(query) {
   var url = BASE_URL + "/?Titulo=" + encodeURIComponent(query);
   return fetchText(url, { headers: { Referer: BASE_URL + "/" } }).then(function(html) {
     var out = [];
-    var re = /<a[^>]*href="\/serie\/(\d+)"[^>]*>[\s\S]*?<p[^>]*class="[^"]*nombre-serie[^"]*"[^>]*>([^<]+)<\/p>/gi;
+    var seen = {};
+    var re = /<a[^>]*href="\/serie\/(\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
     var m;
     while ((m = re.exec(html)) !== null) {
       var id = m[1];
-      var title = m[2].replace(/<[^>]*>/g, "").trim();
-      if (!id || !title)
+      if (seen[id])
         continue;
-      out.push({ id, title, href: BASE_URL + "/serie/" + id });
-    }
-    if (out.length === 0) {
-      var re2 = /<a[^>]*href="\/serie\/(\d+)"[^>]*>[\s\S]*?<\/a>/gi;
-      var seen = {};
-      while ((m = re2.exec(html)) !== null) {
-        var id2 = m[1];
-        if (seen[id2])
-          continue;
-        seen[id2] = 1;
-        var snippet = html.slice(m.index, m.index + 800);
-        var tm = snippet.match(/nombre-serie[^>]*>([^<]+)</i);
-        var t = tm ? tm[1].trim() : "Serie " + id2;
-        out.push({ id: id2, title: t, href: BASE_URL + "/serie/" + id2 });
-      }
+      var tm = m[2].match(/nombre-serie[^>]*>([^<]+)</i);
+      if (!tm)
+        continue;
+      var title = tm[1].replace(/\s+/g, " ").trim();
+      if (!title)
+        continue;
+      seen[id] = 1;
+      out.push({ id, title });
     }
     return out;
   }).catch(function() {
     return [];
   });
 }
-function pickBest(cands, media) {
-  var no = normalizeText(media.originalTitle || "");
-  var nt = normalizeText(media.title || "");
-  var names = [no, nt];
-  var alias = media.aliasTitles || [];
-  for (var ai = 0; ai < alias.length; ai++) {
-    var na = normalizeText(alias[ai]);
+function scoreCandidate(candTitle, media) {
+  var nc = norm(candTitle);
+  var names = [];
+  [media.title, media.englishTitle, media.originalTitle].forEach(function(t) {
+    var nt = norm(t);
+    if (nt && names.indexOf(nt) < 0)
+      names.push(nt);
+  });
+  var aliases = aliasQueries(media.title || "").concat(aliasQueries(media.englishTitle || ""));
+  aliases.forEach(function(a) {
+    var na = norm(a);
     if (na && names.indexOf(na) < 0)
       names.push(na);
-  }
-  var best = null, bestScore = -1;
-  for (var i = 0; i < cands.length; i++) {
-    var c = cands[i];
-    var nc = normalizeText(c.title);
-    var score = 0;
-    if (names.indexOf(nc) !== -1)
-      score = 100;
+  });
+  if (names.indexOf(nc) !== -1)
+    return 100;
+  var best = 0;
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i];
+    if (!n)
+      continue;
+    if (nc.indexOf(n) !== -1 || n.indexOf(nc) !== -1)
+      best = Math.max(best, 80);
     else {
-      for (var ni = 0; ni < names.length; ni++) {
-        var nn = names[ni];
-        if (nn && (nc.indexOf(nn) !== -1 || nn.indexOf(nc) !== -1)) {
-          score = 80;
-          break;
-        }
-      }
-    }
-    if (score === 0) {
-      var words = names.join(" ").split(" ").filter(function(w2) {
-        return w2.length >= 3;
-      });
-      var qm = 0;
-      for (var w = 0; w < words.length; w++)
-        if (nc.indexOf(words[w]) !== -1)
-          qm++;
-      if (qm === 0)
-        continue;
-      score = qm * 15;
-    }
-    if (media.year && c.title.indexOf(media.year) !== -1)
-      score += 5;
-    if (score > bestScore) {
-      bestScore = score;
-      best = c;
+      var wn = n.split(" "), wc = nc.split(" ");
+      var hit = 0;
+      for (var j = 0; j < wn.length; j++)
+        if (wc.indexOf(wn[j]) !== -1)
+          hit++;
+      if (wn.length && hit / wn.length >= 0.6)
+        best = Math.max(best, 50);
     }
   }
-  if (!best || bestScore < 10)
-    return null;
   return best;
 }
-function extractEpisodeUrl(serieHtml, season, episode) {
-  season = parseInt(season, 10) || 1;
-  episode = parseInt(episode, 10) || 1;
-  var temporadaRe = /<h4[^>]*data-temporada-id="(\d+)"[^>]*>[\s\S]*?<\/h4>([\s\S]*?)(?=<h4[^>]*data-temporada-id=|<\/section>)/gi;
+function parseSerie(html) {
+  var seasons = [];
+  var re = /data-temporada-id="(\d+)"[^>]*>[\s\S]*?Temporada\s*(\d+)|<a[^>]*href="\/serie\/capitulo\/(\d+)\?t=(\d+)"[^>]*>[\s\S]*?<span[^>]*>\s*Capitulo\s*(\d+)/gi;
   var m;
-  var found = null;
-  while ((m = temporadaRe.exec(serieHtml)) !== null) {
-    var tid = parseInt(m[1], 10);
-    var block = m[2];
-    var epRe = /<a[^>]*href="(\/serie\/capitulo\/[^"]+)"[^>]*>/gi;
-    var links = [];
-    var em;
-    while ((em = epRe.exec(block)) !== null) {
-      var href = em[1];
-      href = href.replace(/&amp;/g, "&");
-      if (href.indexOf("/serie/capitulo/") === 0)
-        links.push(href);
+  var current = null;
+  var h4re = /<h4[^>]*data-temporada-id="(\d+)"[^>]*>/gi;
+  var blocks = [];
+  while ((m = h4re.exec(html)) !== null) {
+    blocks.push({ temp: parseInt(m[1], 10), index: m.index });
+  }
+  for (var b = 0; b < blocks.length; b++) {
+    var start = blocks[b].index;
+    var end = b + 1 < blocks.length ? blocks[b + 1].index : html.length;
+    var chunk = html.slice(start, end);
+    var eps = [];
+    var are = /<a[^>]*href="\/serie\/capitulo\/(\d+)\?t=(\d+)"[^>]*>[\s\S]*?<span[^>]*>\s*Capitulo\s*(\d+)/gi;
+    var am;
+    while ((am = are.exec(chunk)) !== null) {
+      eps.push({ numero: parseInt(am[3], 10), capituloId: am[1], temporada: parseInt(am[2], 10) });
     }
-    if (tid === season) {
-      if (episode >= 1 && episode <= links.length)
-        return links[episode - 1];
+    eps.sort(function(x, y) {
+      return x.numero - y.numero;
+    });
+    seasons.push({ temporada: blocks[b].temp, episodios: eps });
+  }
+  return seasons;
+}
+function findEpisode(seasons, season, episode) {
+  for (var i = 0; i < seasons.length; i++) {
+    if (seasons[i].temporada === season) {
+      var eps = seasons[i].episodios;
+      for (var j = 0; j < eps.length; j++) {
+        if (eps[j].numero === episode)
+          return eps[j];
+      }
       return null;
     }
-    if (!found)
-      found = links;
-  }
-  if (!found) {
-    var flatRe = /<a[^>]*href="(\/serie\/capitulo\/[^"]+)"[^>]*>/gi;
-    var flat = [];
-    while ((m = flatRe.exec(serieHtml)) !== null) {
-      var h = m[1].replace(/&amp;/g, "&");
-      flat.push(h);
-    }
-    var idx = episode - 1;
-    if (season === 1 && flat[idx])
-      return flat[idx];
-    if (flat[idx])
-      return flat[idx];
   }
   return null;
 }
-function extractIframeSrc(capituloHtml) {
-  var m = capituloHtml.match(/<iframe[^>]*src="([^"]+)"[^>]*>/i);
+function extractIframe(html) {
+  var m = html.match(/<iframe[^>]*src="([^"]+)"/i);
   if (m)
     return m[1].replace(/&amp;/g, "&");
-  var m2 = capituloHtml.match(/https?:\/\/[^"']*rpmvid[^"']*/i);
-  if (m2)
-    return m2[0];
-  var m3 = capituloHtml.match(/https?:\/\/[^"']*cubeembed[^"']*/i);
-  if (m3)
-    return m3[0];
-  return null;
+  m = html.match(/https?:\/\/cubeembed\.rpmvid\.com\/#[A-Za-z0-9]+/);
+  return m ? m[0] : null;
 }
-function resolveCapituloIframe(iframeSrc, season, episode) {
-  season = parseInt(season, 10) || 1;
-  episode = parseInt(episode, 10) || 1;
+function resolveIframe(iframeSrc) {
   if (!iframeSrc)
-    return Promise.resolve([]);
+    return Promise.resolve(null);
   if (iframeSrc.indexOf("//") === 0)
     iframeSrc = "https:" + iframeSrc;
-  if (iframeSrc.indexOf("http") !== 0) {
-    if (iframeSrc.indexOf("/") === 0)
-      iframeSrc = "https://cubeembed.rpmvid.com" + iframeSrc;
-    else
-      iframeSrc = "https://" + iframeSrc;
-  }
   if (isRpmvidIframe(iframeSrc)) {
-    return resolveRpmvidStream(iframeSrc).then(function(r) {
-      if (r && r.url) {
-        return [{ name: "LaCartoons (Rpmvid)", title: (r.quality || "720p") + " \xB7 LAT \xB7 Rpmvid S" + season + "E" + episode, url: r.url, quality: r.quality || "720p", language: "Latino", headers: r.headers }];
-      }
-      return [];
-    }).catch(function() {
-      return [];
+    return resolveRpmvidStream(iframeSrc).catch(function() {
+      return null;
     });
   }
   var fixed = iframeSrc;
@@ -7903,100 +7920,83 @@ function resolveCapituloIframe(iframeSrc, season, episode) {
   }
   var resolver = getEmbedResolver(fixed);
   if (!resolver)
-    return Promise.resolve([]);
-  return resolver(fixed).then(function(r) {
-    if (r && r.url) {
-      var host = "";
-      try {
-        host = fixed.split("/")[2];
-      } catch (e) {
-      }
-      return [{ name: "LaCartoons (" + host + ")", title: (r.quality || "HD") + " \xB7 LAT \xB7 " + host + " S" + season + "E" + episode, url: r.url, quality: r.quality || "HD", language: "Latino", headers: r.headers }];
-    }
-    return [];
-  }).catch(function() {
-    return [];
+    return Promise.resolve(null);
+  return resolver(fixed).catch(function() {
+    return null;
   });
 }
 function extractStreams(tmdbId, mediaType, season, episode) {
-  var tmdbType = mediaType === "tv" || mediaType === "series" || mediaType === "anime" ? "tv" : "movie";
-  if (tmdbType === "movie")
-    return Promise.resolve([]);
-  season = parseInt(season, 10) || 1;
-  episode = parseInt(episode, 10) || 1;
+  var tmdbType = mediaType === "movie" ? "movie" : "tv";
   return getMediaTitle(tmdbId, tmdbType).then(function(media) {
-    var queries = [];
-    function addQ(q) {
-      if (q && esLatino(q) && queries.indexOf(q) < 0)
-        queries.push(q);
-    }
-    addQ(media.originalTitle);
-    addQ(media.title);
-    addQ(media.englishTitle);
-    var aliasQ = aliasQueries((media.originalTitle || "") + " " + (media.title || "") + " " + (media.englishTitle || ""));
-    for (var aq = 0; aq < aliasQ.length; aq++)
-      addQ(aliasQ[aq]);
-    media.aliasTitles = aliasQ;
-    var STOPWORDS = { y: 1, de: 1, la: 1, el: 1, los: 1, las: 1, un: 1, una: 1, del: 1, al: 1, e: 1, u: 1, o: 1, en: 1, con: 1, por: 1, para: 1, the: 1, a: 1, an: 1, of: 1, and: 1, to: 1, in: 1, on: 1, vs: 1 };
-    var allText = normalizeText([media.originalTitle, media.title, media.englishTitle].filter(Boolean).join(" "));
-    var words = allText.split(" ").filter(function(w) {
-      return w.length >= 3 && !STOPWORDS[w];
-    });
-    var unique = {};
-    var keywords = [];
-    for (var i = 0; i < words.length; i++) {
-      if (!unique[words[i]]) {
-        unique[words[i]] = 1;
-        keywords.push(words[i]);
-      }
-    }
-    keywords.sort(function(a, b) {
-      return b.length - a.length;
-    });
-    keywords = keywords.slice(0, 3);
-    for (var ki = 0; ki < keywords.length; ki++)
-      addQ(keywords[ki]);
-    if (!queries.length)
+    if (!media.title && !media.englishTitle)
       return [];
-    return Promise.all(queries.map(function(q) {
-      return searchSite(q).catch(function() {
-        return [];
-      });
-    })).then(function(lists) {
-      var all = [], seen = {};
-      for (var li = 0; li < lists.length; li++) {
-        for (var ci = 0; ci < lists[li].length; ci++) {
-          var c = lists[li][ci];
-          if (c && c.id && !seen[c.id]) {
+    var queries = buildQueries(media);
+    var searches = queries.map(function(q) {
+      return searchSite(q);
+    });
+    return Promise.all(searches).then(function(results) {
+      var cands = [];
+      var seen = {};
+      results.forEach(function(list) {
+        list.forEach(function(c) {
+          if (!seen[c.id]) {
             seen[c.id] = 1;
-            all.push(c);
+            cands.push(c);
           }
-        }
-      }
-      return all;
-    }).then(function(cands) {
-      var best = pickBest(cands, media);
-      if (!best)
-        return [];
-      return fetchText(best.href, { headers: { Referer: BASE_URL + "/" } }).then(function(serieHtml) {
-        var epPath = extractEpisodeUrl(serieHtml, season, episode);
-        if (!epPath)
-          return [];
-        var epUrl = epPath.indexOf("http") === 0 ? epPath : BASE_URL + epPath;
-        return fetchText(epUrl, { headers: { Referer: best.href } }).then(function(capHtml) {
-          var iframeSrc = extractIframeSrc(capHtml);
-          return resolveCapituloIframe(iframeSrc, season, episode);
         });
       });
+      if (!cands.length)
+        return [];
+      var best = null, bestScore = -1;
+      cands.forEach(function(c) {
+        var s = scoreCandidate(c.title, media);
+        if (s > bestScore) {
+          bestScore = s;
+          best = c;
+        }
+      });
+      if (!best || bestScore < 50)
+        return [];
+      return fetchText(BASE_URL + "/serie/" + best.id, { headers: { Referer: BASE_URL + "/" } }).then(function(html) {
+        var seasons = parseSerie(html);
+        var ep = findEpisode(seasons, season, episode);
+        if (!ep)
+          return [];
+        var capUrl = BASE_URL + "/serie/capitulo/" + ep.capituloId + "?t=" + ep.temporada;
+        return fetchText(capUrl, { headers: { Referer: BASE_URL + "/serie/" + best.id } }).then(function(capHtml) {
+          var iframe = extractIframe(capHtml);
+          if (!iframe)
+            return [];
+          return resolveIframe(iframe).then(function(r) {
+            if (!r || !r.url)
+              return [];
+            var host = "";
+            try {
+              host = iframe.split("/")[2] || "";
+            } catch (e) {
+            }
+            return [{
+              name: "LaCartoons",
+              title: "LaCartoons " + (r.quality || "720p") + " Latino",
+              url: r.url,
+              quality: r.quality || "720p",
+              language: "Latino",
+              headers: r.headers || { Referer: EMBED_ORIGIN2 + "/", Origin: EMBED_ORIGIN2 }
+            }];
+          });
+        });
+      }).catch(function() {
+        return [];
+      });
     });
-  }).catch(function(err) {
-    console.error("[LaCartoons] Error: " + (err && err.message ? err.message : err));
+  }).catch(function() {
     return [];
   });
 }
 
 // src/lacartoons/catalogo.js
 var BASE_URL2 = "https://www.lacartoons.com";
+var EMBED_ORIGIN3 = "https://cubeembed.rpmvid.com";
 function absUrl(u) {
   if (!u)
     return null;
@@ -8010,7 +8010,7 @@ function absUrl(u) {
   return BASE_URL2 + "/" + u;
 }
 function textClean(s) {
-  return (s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  return String(s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 }
 function getCatalogo(page) {
   page = parseInt(page, 10) || 1;
@@ -8019,30 +8019,21 @@ function getCatalogo(page) {
   return fetchText(BASE_URL2 + "/?page=" + page, { headers: { Referer: BASE_URL2 + "/" } }).then(function(html) {
     var out = [];
     var seen = {};
-    var re = /<a\s+href="\/serie\/(\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    var re = /<a[^>]*href="\/serie\/(\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
     var m;
     while ((m = re.exec(html)) !== null) {
       var id = m[1];
       if (seen[id])
         continue;
-      var block = m[2];
-      if (block.indexOf("nombre-serie") < 0)
+      if (m[2].indexOf("nombre-serie") < 0)
         continue;
-      var tm = block.match(/nombre-serie[^>]*>([^<]+)</i);
+      var tm = m[2].match(/nombre-serie[^>]*>([^<]+)</i);
       var title = tm ? textClean(tm[1]) : null;
       if (!title)
         continue;
       seen[id] = 1;
-      var im = block.match(/<img[^>]*src="([^"]+)"/i);
-      var ym = block.match(/marcador-ano[^>]*>(\d{4})</i);
-      var cm = block.match(/marcadorSeries[^>]*>\s*([^<]+?)\s*</i);
-      out.push({
-        id,
-        title,
-        img: absUrl(im ? im[1] : null),
-        year: ym ? ym[1] : null,
-        canal: cm ? textClean(cm[1]) : null
-      });
+      var im = m[2].match(/<img[^>]*src="([^"]+)"/i);
+      out.push({ id, title, img: absUrl(im ? im[1] : null) });
     }
     return out;
   }).catch(function() {
@@ -8050,65 +8041,52 @@ function getCatalogo(page) {
   });
 }
 function getSerie(serieId) {
-  serieId = String(serieId || "").replace(/\D/g, "");
-  if (!serieId)
-    return Promise.resolve(null);
   return fetchText(BASE_URL2 + "/serie/" + serieId, { headers: { Referer: BASE_URL2 + "/" } }).then(function(html) {
-    var tm = html.match(/subtitulo-serie-seccion[^>]*>([^<]+)/i);
-    var title = tm ? textClean(tm[1]) : "Serie " + serieId;
-    var temporadas = [];
-    var seenEp = {};
-    var h4re = /<h4[^>]*data-temporada-id="(\d+)"[^>]*>[\s\S]*?<\/h4>([\s\S]*?)(?=<h4[^>]*data-temporada-id=|<\/section>)/gi;
-    var m;
-    while ((m = h4re.exec(html)) !== null) {
-      var tid = parseInt(m[1], 10) || 1;
-      var eps = extraerEpisodiosBloque(m[2], tid, seenEp);
-      if (eps.length)
-        temporadas.push({ temporada: tid, episodios: eps });
-    }
-    if (!temporadas.length) {
-      var flat = extraerEpisodiosBloque(html, 1, seenEp);
-      if (flat.length)
-        temporadas.push({ temporada: 1, episodios: flat });
-    }
-    return { id: serieId, title, temporadas };
+    var seasons = parseSerie(html);
+    var title = null;
+    var tm = html.match(/<title>([^<]*)<\/title>/i);
+    if (tm)
+      title = textClean(tm[1]);
+    return { id: String(serieId), title, temporadas: seasons };
   }).catch(function() {
     return null;
   });
 }
-function extraerEpisodiosBloque(html, temporada, seenEp) {
-  var eps = [];
-  var epRe = /<a[^>]*href="\/serie\/capitulo\/(\d+)[^"]*"[^>]*>\s*<span>\s*Capitulo\s*(\d+)-\s*<\/span>\s*([^<]*?)\s*<\/a>/gi;
-  var em;
-  while ((em = epRe.exec(html)) !== null) {
-    var key = temporada + ":" + em[2];
-    if (seenEp[key])
-      continue;
-    seenEp[key] = 1;
-    eps.push({
-      numero: parseInt(em[2], 10),
-      titulo: textClean(em[3]) || "Capitulo " + em[2],
-      capituloId: em[1],
-      temporada
+function getStreamCapitulo(serieId, temporada, numero) {
+  return getSerie(serieId).then(function(serie) {
+    if (!serie)
+      return [];
+    var ep = null;
+    serie.temporadas.forEach(function(s) {
+      if (s.temporada === temporada) {
+        s.episodios.forEach(function(e) {
+          if (e.numero === numero)
+            ep = e;
+        });
+      }
     });
-  }
-  return eps;
-}
-function getStreamCapitulo(capituloId, temporada) {
-  capituloId = String(capituloId || "").replace(/\D/g, "");
-  temporada = parseInt(temporada, 10) || 1;
-  if (!capituloId)
-    return Promise.resolve(null);
-  var epUrl = BASE_URL2 + "/serie/capitulo/" + capituloId + "?t=" + temporada;
-  return fetchText(epUrl, { headers: { Referer: BASE_URL2 + "/" } }).then(function(capHtml) {
-    var iframeSrc = extractIframeSrc(capHtml);
-    return resolveCapituloIframe(iframeSrc, temporada, 1).then(function(streams) {
-      if (streams && streams.length && streams[0].url)
-        return streams[0];
-      return null;
+    if (!ep)
+      return [];
+    var capUrl = BASE_URL2 + "/serie/capitulo/" + ep.capituloId + "?t=" + ep.temporada;
+    return fetchText(capUrl, { headers: { Referer: BASE_URL2 + "/serie/" + serieId } }).then(function(html) {
+      var iframe = extractIframe(html);
+      if (!iframe)
+        return [];
+      return resolveIframe(iframe).then(function(r) {
+        if (!r || !r.url)
+          return [];
+        return [{
+          name: "LaCartoons",
+          title: "LaCartoons " + (r.quality || "720p") + " Latino",
+          url: r.url,
+          quality: r.quality || "720p",
+          language: "Latino",
+          headers: r.headers || { Referer: EMBED_ORIGIN3 + "/", Origin: EMBED_ORIGIN3 }
+        }];
+      });
+    }).catch(function() {
+      return [];
     });
-  }).catch(function() {
-    return null;
   });
 }
 

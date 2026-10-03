@@ -1,25 +1,64 @@
 import { fetchText, fetchJson } from '../shared/http.js';
-import { getEmbedResolver } from '../shared/embedResolvers.js';
 import { isRpmvidIframe, resolveRpmvidStream } from '../shared/rpmvid.js';
+import { getEmbedResolver } from '../shared/embedResolvers.js';
 
 var TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
 var BASE_URL = 'https://www.lacartoons.com';
+var EMBED_ORIGIN = 'https://cubeembed.rpmvid.com';
 
-var ACCENT_MAP = { '\u00e1': 'a', '\u00e9': 'e', '\u00ed': 'i', '\u00f3': 'o', '\u00fa': 'u', '\u00fc': 'u', '\u00f1': 'n', '\u00c1': 'a', '\u00c9': 'a', '\u00cd': 'i', '\u00d3': 'o', '\u00da': 'u', '\u00dc': 'u', '\u00d1': 'n', '\u00e0': 'a', '\u00e8': 'e', '\u00ec': 'i', '\u00f2': 'o', '\u00f9': 'u', '\u00e2': 'a', '\u00ea': 'e', '\u00ee': 'i', '\u00f4': 'o', '\u00fb': 'u', '\u00e4': 'a', '\u00eb': 'e', '\u00ef': 'i', '\u00f6': 'o', '\u00e7': 'c', '\u00e3': 'a', '\u00f5': 'o' };
-function stripAccents(s) { return (s || '').replace(/[^\x00-\x7F]/g, function(c) { return ACCENT_MAP[c] || ''; }); }
-function normalizeText(text) {
-  if (!text) return '';
-  return stripAccents(text.toLowerCase()).replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+// ---------------------------------------------------------------------------
+// Texto
+// ---------------------------------------------------------------------------
+var ACCENT_MAP = {
+  '\u00e1': 'a', '\u00e9': 'e', '\u00ed': 'i', '\u00f3': 'o', '\u00fa': 'u',
+  '\u00fc': 'u', '\u00f1': 'n', '\u00c1': 'a', '\u00c9': 'e', '\u00cd': 'i',
+  '\u00d3': 'o', '\u00da': 'u', '\u00dc': 'u', '\u00d1': 'n', '\u00e0': 'a',
+  '\u00e8': 'e', '\u00ec': 'i', '\u00f2': 'o', '\u00f9': 'u', '\u00e2': 'a',
+  '\u00ea': 'e', '\u00ee': 'i', '\u00f4': 'o', '\u00fb': 'u', '\u00e4': 'a',
+  '\u00eb': 'e', '\u00ef': 'i', '\u00f6': 'o', '\u00e7': 'c', '\u00e3': 'a',
+  '\u00f5': 'o'
+};
+function stripAccents(s) {
+  return String(s || '').replace(/[^\x00-\x7F]/g, function (c) { return ACCENT_MAP[c] || ''; });
+}
+function norm(s) {
+  return stripAccents(String(s || '').toLowerCase()).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// El sitio es 100% español: queries en japonés/chino/coreano nunca dan resultados.
+function isLatin(s) {
+  var n = norm(s);
+  return n.length >= 2 && /[a-z]/.test(n);
+}
+function keywords(s) {
+  return norm(s).split(' ').filter(function (w) { return w.length >= 4; });
 }
 
-// Aliases: título TMDB -> términos de búsqueda del sitio. lacartoons cataloga
-// en español mientras TMDB a veces solo trae el título en inglés
-// (p. ej. "Casper and Friends" vive en el sitio como "Gasparin y sus amigos").
+// ---------------------------------------------------------------------------
+// TMDB
+// ---------------------------------------------------------------------------
+function getMediaTitle(tmdbId, tmdbType) {
+  var base = 'https://api.themoviedb.org/3/' + tmdbType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY;
+  return Promise.all([
+    fetchJson(base + '&language=es-MX').catch(function () { return null; }),
+    fetchJson(base + '&language=en-US').catch(function () { return null; })
+  ]).then(function (rs) {
+    var es = rs[0] || {}, en = rs[1] || {};
+    var isMovie = tmdbType === 'movie';
+    return {
+      title: isMovie ? (es.title || en.title) : (es.name || en.name),
+      englishTitle: isMovie ? en.title : en.name,
+      originalTitle: isMovie ? (es.original_title || en.original_title) : (es.original_name || en.original_name)
+    };
+  });
+}
+
+// Aliases conocidos: título TMDB -> cómo lo cataloga el sitio.
 var TITLE_ALIASES = [
-  { match: ['casper'], extra: ['gasparin', 'gasparin y sus amigos'] }
+  { match: ['casper'], extra: ['gasparin', 'gasparin y sus amigos'] },
+  { match: ['saint seiya'], extra: ['caballeros del zodiaco', 'los caballeros del zodiaco'] }
 ];
-function aliasQueries(text) {
-  var n = ' ' + normalizeText(text) + ' ';
+function aliasQueries(title) {
+  var n = ' ' + norm(title) + ' ';
   var out = [];
   for (var i = 0; i < TITLE_ALIASES.length; i++) {
     var a = TITLE_ALIASES[i];
@@ -35,253 +74,201 @@ function aliasQueries(text) {
   return out;
 }
 
-function getMediaTitle(tmdbId, tmdbType) {
-  var base = 'https://api.themoviedb.org/3/' + tmdbType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY;
-  return Promise.all([
-    fetchJson(base + '&language=es-MX').catch(function(){ return null; }),
-    fetchJson(base + '&language=en-US').catch(function(){ return null; })
-  ]).then(function(rs) {
-    var es = rs[0] || {}, en = rs[1] || {};
-    var isMovie = tmdbType === 'movie';
-    var date = isMovie ? (es.release_date || en.release_date) : (es.first_air_date || en.first_air_date);
-    return {
-      title: isMovie ? (es.title || en.title) : (es.name || en.name),
-      originalTitle: isMovie ? (es.original_title || en.original_title) : (es.original_name || en.original_name),
-      englishTitle: isMovie ? en.title : en.name,
-      year: date && date.length >= 4 ? date.slice(0, 4) : null
-    };
-  });
+function buildQueries(media) {
+  var seen = {};
+  var out = [];
+  function add(q) {
+    var nq = norm(q);
+    if (nq && nq.length >= 2 && !seen[nq]) { seen[nq] = 1; out.push(q); }
+  }
+  var titles = [media.title, media.englishTitle, media.originalTitle];
+  for (var i = 0; i < titles.length; i++) {
+    if (titles[i] && isLatin(titles[i])) {
+      add(titles[i]);
+      var kw = keywords(titles[i]);
+      for (var j = 0; j < kw.length; j++) add(kw[j]);
+    }
+  }
+  var aliases = aliasQueries(media.title || '').concat(aliasQueries(media.englishTitle || ''));
+  for (var k = 0; k < aliases.length; k++) add(aliases[k]);
+  return out.slice(0, 12);
 }
 
-// El sitio es 100% español: buscar títulos en japonés/chino/coreano nunca da
-// resultados y solo quema tiempo.
-function esLatino(t) {
-  if (!t) return false;
-  var n = normalizeText(t);
-  return n.length >= 2 && /[a-z]/.test(n);
-}
-
+// ---------------------------------------------------------------------------
+// Búsqueda en el sitio: GET /?Titulo={q}
+// ---------------------------------------------------------------------------
 function searchSite(query) {
   var url = BASE_URL + '/?Titulo=' + encodeURIComponent(query);
-  return fetchText(url, { headers: { Referer: BASE_URL + '/' } }).then(function(html) {
+  return fetchText(url, { headers: { Referer: BASE_URL + '/' } }).then(function (html) {
     var out = [];
-    // primary: <a href="/serie/123"> ... <p class="nombre-serie">Title</p>
-    var re = /<a[^>]*href="\/serie\/(\d+)"[^>]*>[\s\S]*?<p[^>]*class="[^"]*nombre-serie[^"]*"[^>]*>([^<]+)<\/p>/gi;
+    var seen = {};
+    var re = /<a[^>]*href="\/serie\/(\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
     var m;
     while ((m = re.exec(html)) !== null) {
       var id = m[1];
-      var title = m[2].replace(/<[^>]*>/g, '').trim();
-      if (!id || !title) continue;
-      out.push({ id: id, title: title, href: BASE_URL + '/serie/' + id });
-    }
-    // fallback: any /serie/ link with nearby title
-    if (out.length === 0) {
-      var re2 = /<a[^>]*href="\/serie\/(\d+)"[^>]*>[\s\S]*?<\/a>/gi;
-      var seen = {};
-      while ((m = re2.exec(html)) !== null) {
-        var id2 = m[1];
-        if (seen[id2]) continue;
-        seen[id2] = 1;
-        // try to extract title near link
-        var snippet = html.slice(m.index, m.index + 800);
-        var tm = snippet.match(/nombre-serie[^>]*>([^<]+)</i);
-        var t = tm ? tm[1].trim() : 'Serie ' + id2;
-        out.push({ id: id2, title: t, href: BASE_URL + '/serie/' + id2 });
-      }
+      if (seen[id]) continue;
+      var tm = m[2].match(/nombre-serie[^>]*>([^<]+)</i);
+      if (!tm) continue;
+      var title = tm[1].replace(/\s+/g, ' ').trim();
+      if (!title) continue;
+      seen[id] = 1;
+      out.push({ id: id, title: title });
     }
     return out;
-  }).catch(function() { return []; });
+  }).catch(function () { return []; });
 }
 
-function pickBest(cands, media) {
-  var no = normalizeText(media.originalTitle || '');
-  var nt = normalizeText(media.title || '');
-  var names = [no, nt];
-  var alias = media.aliasTitles || [];
-  for (var ai = 0; ai < alias.length; ai++) {
-    var na = normalizeText(alias[ai]);
+function scoreCandidate(candTitle, media) {
+  var nc = norm(candTitle);
+  var names = [];
+  [media.title, media.englishTitle, media.originalTitle].forEach(function (t) {
+    var nt = norm(t);
+    if (nt && names.indexOf(nt) < 0) names.push(nt);
+  });
+  // Los aliases también cuentan como nombre válido (p. ej. "gasparin").
+  var aliases = aliasQueries(media.title || '').concat(aliasQueries(media.englishTitle || ''));
+  aliases.forEach(function (a) {
+    var na = norm(a);
     if (na && names.indexOf(na) < 0) names.push(na);
-  }
-  var best = null, bestScore = -1;
-  for (var i = 0; i < cands.length; i++) {
-    var c = cands[i];
-    var nc = normalizeText(c.title);
-    var score = 0;
-    if (names.indexOf(nc) !== -1) score = 100;
+  });
+  if (names.indexOf(nc) !== -1) return 100;
+  var best = 0;
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i];
+    if (!n) continue;
+    if (nc.indexOf(n) !== -1 || n.indexOf(nc) !== -1) best = Math.max(best, 80);
     else {
-      for (var ni = 0; ni < names.length; ni++) {
-        var nn = names[ni];
-        if (nn && (nc.indexOf(nn) !== -1 || nn.indexOf(nc) !== -1)) { score = 80; break; }
-      }
+      var wn = n.split(' '), wc = nc.split(' ');
+      var hit = 0;
+      for (var j = 0; j < wn.length; j++) if (wc.indexOf(wn[j]) !== -1) hit++;
+      if (wn.length && hit / wn.length >= 0.6) best = Math.max(best, 50);
     }
-    if (score === 0) {
-      var words = names.join(' ').split(' ').filter(function(w){ return w.length >= 3; });
-      var qm = 0;
-      for (var w = 0; w < words.length; w++) if (nc.indexOf(words[w]) !== -1) qm++;
-      if (qm === 0) continue;
-      score = qm * 15;
-    }
-    if (media.year && c.title.indexOf(media.year) !== -1) score += 5;
-    if (score > bestScore) { bestScore = score; best = c; }
   }
-  if (!best || bestScore < 10) return null;
   return best;
 }
 
-function extractEpisodeUrl(serieHtml, season, episode) {
-  season = parseInt(season, 10) || 1;
-  episode = parseInt(episode, 10) || 1;
-  // Try temporada blocks
-  var temporadaRe = /<h4[^>]*data-temporada-id="(\d+)"[^>]*>[\s\S]*?<\/h4>([\s\S]*?)(?=<h4[^>]*data-temporada-id=|<\/section>)/gi;
+// ---------------------------------------------------------------------------
+// Serie: GET /serie/{id} -> temporadas y episodios
+// Estructura actual del sitio:
+//   <h4 ... data-temporada-id="1">Temporada 1</h4>
+//   <a href="/serie/capitulo/{capId}?t={temp}"><span>Capitulo {n}-</span> ...</a>
+// ---------------------------------------------------------------------------
+function parseSerie(html) {
+  var seasons = [];
+  var re = /data-temporada-id="(\d+)"[^>]*>[\s\S]*?Temporada\s*(\d+)|<a[^>]*href="\/serie\/capitulo\/(\d+)\?t=(\d+)"[^>]*>[\s\S]*?<span[^>]*>\s*Capitulo\s*(\d+)/gi;
   var m;
-  var found = null;
-  while ((m = temporadaRe.exec(serieHtml)) !== null) {
-    var tid = parseInt(m[1], 10);
-    var block = m[2];
-    var epRe = /<a[^>]*href="(\/serie\/capitulo\/[^"]+)"[^>]*>/gi;
-    var links = [];
-    var em;
-    while ((em = epRe.exec(block)) !== null) {
-      var href = em[1];
-      // html decode &amp;
-      href = href.replace(/&amp;/g, '&');
-      if (href.indexOf('/serie/capitulo/') === 0) links.push(href);
+  var current = null;
+  // Dos pasadas: primero temporadas, luego episodios por temporada.
+  var h4re = /<h4[^>]*data-temporada-id="(\d+)"[^>]*>/gi;
+  var blocks = [];
+  while ((m = h4re.exec(html)) !== null) {
+    blocks.push({ temp: parseInt(m[1], 10), index: m.index });
+  }
+  for (var b = 0; b < blocks.length; b++) {
+    var start = blocks[b].index;
+    var end = b + 1 < blocks.length ? blocks[b + 1].index : html.length;
+    var chunk = html.slice(start, end);
+    var eps = [];
+    var are = /<a[^>]*href="\/serie\/capitulo\/(\d+)\?t=(\d+)"[^>]*>[\s\S]*?<span[^>]*>\s*Capitulo\s*(\d+)/gi;
+    var am;
+    while ((am = are.exec(chunk)) !== null) {
+      eps.push({ numero: parseInt(am[3], 10), capituloId: am[1], temporada: parseInt(am[2], 10) });
     }
-    if (tid === season) {
-      if (episode >= 1 && episode <= links.length) return links[episode - 1];
-      // if not found but block exists, return null to avoid wrong season
+    eps.sort(function (x, y) { return x.numero - y.numero; });
+    seasons.push({ temporada: blocks[b].temp, episodios: eps });
+  }
+  return seasons;
+}
+
+function findEpisode(seasons, season, episode) {
+  for (var i = 0; i < seasons.length; i++) {
+    if (seasons[i].temporada === season) {
+      var eps = seasons[i].episodios;
+      for (var j = 0; j < eps.length; j++) {
+        if (eps[j].numero === episode) return eps[j];
+      }
       return null;
     }
-    // also collect for flat fallback
-    if (!found) found = links;
-  }
-  // fallback: flat list of all capitulo links in order
-  if (!found) {
-    var flatRe = /<a[^>]*href="(\/serie\/capitulo\/[^"]+)"[^>]*>/gi;
-    var flat = [];
-    while ((m = flatRe.exec(serieHtml)) !== null) {
-      var h = m[1].replace(/&amp;/g, '&');
-      flat.push(h);
-    }
-    // global index: (season-1)*? + episode -> if multi-season assume sequential
-    var idx = episode - 1;
-    // if season>1 try to estimate offset by counting but we don't know per-season count, so just take episode-1 globally if season==1
-    if (season === 1 && flat[idx]) return flat[idx];
-    if (flat[idx]) return flat[idx];
   }
   return null;
 }
 
-export function extractIframeSrc(capituloHtml) {
-  var m = capituloHtml.match(/<iframe[^>]*src="([^"]+)"[^>]*>/i);
+// ---------------------------------------------------------------------------
+// Capítulo: GET /serie/capitulo/{capId}?t={temp} -> iframe -> stream
+// El sitio usa varios hosts (cubeembed/rpmvid, ok.ru, etc.)
+// ---------------------------------------------------------------------------
+function extractIframe(html) {
+  var m = html.match(/<iframe[^>]*src="([^"]+)"/i);
   if (m) return m[1].replace(/&amp;/g, '&');
-  // fallback: any cubeembed/rpmvid url in page
-  var m2 = capituloHtml.match(/https?:\/\/[^"']*rpmvid[^"']*/i);
-  if (m2) return m2[0];
-  var m3 = capituloHtml.match(/https?:\/\/[^"']*cubeembed[^"']*/i);
-  if (m3) return m3[0];
-  return null;
+  m = html.match(/https?:\/\/cubeembed\.rpmvid\.com\/#[A-Za-z0-9]+/);
+  return m ? m[0] : null;
 }
 
-/**
- * Resuelve el iframe de un capítulo a stream directo. Lógica compartida entre
- * la búsqueda por TMDB (extractStreams) y el catálogo directo (catalogo.js).
- * Devuelve array de 0-1 streams con la forma LocalScraperResult del runtime.
- */
-export function resolveCapituloIframe(iframeSrc, season, episode) {
-  season = parseInt(season, 10) || 1;
-  episode = parseInt(episode, 10) || 1;
-  if (!iframeSrc) return Promise.resolve([]);
-  // normalize protocol-relative
+function resolveIframe(iframeSrc) {
+  if (!iframeSrc) return Promise.resolve(null);
   if (iframeSrc.indexOf('//') === 0) iframeSrc = 'https:' + iframeSrc;
-  if (iframeSrc.indexOf('http') !== 0) {
-    if (iframeSrc.indexOf('/') === 0) iframeSrc = 'https://cubeembed.rpmvid.com' + iframeSrc;
-    else iframeSrc = 'https://' + iframeSrc;
-  }
-
   if (isRpmvidIframe(iframeSrc)) {
-    return resolveRpmvidStream(iframeSrc).then(function(r) {
-      if (r && r.url) {
-        return [{ name: 'LaCartoons (Rpmvid)', title: (r.quality || '720p') + ' \u00b7 LAT \u00b7 Rpmvid S' + season + 'E' + episode, url: r.url, quality: r.quality || '720p', language: 'Latino', headers: r.headers }];
-      }
-      return [];
-    }).catch(function(){ return []; });
+    return resolveRpmvidStream(iframeSrc).catch(function () { return null; });
   }
-
-  // fallback to generic resolvers (ok.ru etc)
   var fixed = iframeSrc;
-  try { fixed = decodeURIComponent(fixed); } catch(e){}
+  try { fixed = decodeURIComponent(fixed); } catch (e) {}
   var resolver = getEmbedResolver(fixed);
-  if (!resolver) return Promise.resolve([]);
-  return resolver(fixed).then(function(r) {
-    if (r && r.url) {
-      var host = '';
-      try { host = fixed.split('/')[2]; } catch(e){}
-      return [{ name: 'LaCartoons (' + host + ')', title: (r.quality || 'HD') + ' \u00b7 LAT \u00b7 ' + host + ' S' + season + 'E' + episode, url: r.url, quality: r.quality || 'HD', language: 'Latino', headers: r.headers }];
-    }
-    return [];
-  }).catch(function(){ return []; });
+  if (!resolver) return Promise.resolve(null);
+  return resolver(fixed).catch(function () { return null; });
 }
 
-export function extractStreams(tmdbId, mediaType, season, episode) {
-  var tmdbType = (mediaType === 'tv' || mediaType === 'series' || mediaType === 'anime') ? 'tv' : 'movie';
-  // lacartoons is series-only; movies return []
-  if (tmdbType === 'movie') return Promise.resolve([]);
-  season = parseInt(season, 10) || 1;
-  episode = parseInt(episode, 10) || 1;
-
-  return getMediaTitle(tmdbId, tmdbType).then(function(media) {
-    var queries = [];
-    function addQ(q) {
-      if (q && esLatino(q) && queries.indexOf(q) < 0) queries.push(q);
-    }
-    addQ(media.originalTitle);
-    addQ(media.title);
-    addQ(media.englishTitle);
-    // alias en español para títulos que el sitio cataloga distinto (casper->gasparin)
-    var aliasQ = aliasQueries((media.originalTitle||'') + ' ' + (media.title||'') + ' ' + (media.englishTitle||''));
-    for (var aq = 0; aq < aliasQ.length; aq++) addQ(aliasQ[aq]);
-    media.aliasTitles = aliasQ;
-    // keywords: el buscador del sitio es estricto con frases completas, así que
-    // las palabras distintivas van como queries directas (antes era un fallback
-    // secuencial que tardaba el doble).
-    var STOPWORDS = { y:1, de:1, la:1, el:1, los:1, las:1, un:1, una:1, del:1, al:1, e:1, u:1, o:1, en:1, con:1, por:1, para:1, the:1, a:1, an:1, of:1, and:1, to:1, in:1, on:1, vs:1 };
-    var allText = normalizeText([media.originalTitle, media.title, media.englishTitle].filter(Boolean).join(' '));
-    var words = allText.split(' ').filter(function(w){ return w.length>=3 && !STOPWORDS[w]; });
-    var unique = {}; var keywords=[];
-    for(var i=0;i<words.length;i++){ if(!unique[words[i]]){ unique[words[i]]=1; keywords.push(words[i]); }}
-    keywords.sort(function(a,b){ return b.length - a.length; });
-    keywords = keywords.slice(0,3);
-    for (var ki = 0; ki < keywords.length; ki++) addQ(keywords[ki]);
-    if (!queries.length) return [];
-
-    // TODAS las búsquedas EN PARALELO (antes secuenciales: 13s para Saint Seiya).
-    return Promise.all(queries.map(function(q) {
-      return searchSite(q).catch(function(){ return []; });
-    })).then(function(lists) {
-      var all = [], seen = {};
-      for (var li = 0; li < lists.length; li++) {
-        for (var ci = 0; ci < lists[li].length; ci++) {
-          var c = lists[li][ci];
-          if (c && c.id && !seen[c.id]) { seen[c.id] = 1; all.push(c); }
-        }
-      }
-      return all;
-    }).then(function(cands) {
-      var best = pickBest(cands, media);
-      if (!best) return [];
-      return fetchText(best.href, { headers: { Referer: BASE_URL + '/' } }).then(function(serieHtml) {
-        var epPath = extractEpisodeUrl(serieHtml, season, episode);
-        if (!epPath) return [];
-        var epUrl = epPath.indexOf('http') === 0 ? epPath : BASE_URL + epPath;
-        return fetchText(epUrl, { headers: { Referer: best.href } }).then(function(capHtml) {
-          var iframeSrc = extractIframeSrc(capHtml);
-          return resolveCapituloIframe(iframeSrc, season, episode);
+// ---------------------------------------------------------------------------
+// Flujo principal
+// ---------------------------------------------------------------------------
+function extractStreams(tmdbId, mediaType, season, episode) {
+  var tmdbType = mediaType === 'movie' ? 'movie' : 'tv';
+  return getMediaTitle(tmdbId, tmdbType).then(function (media) {
+    if (!media.title && !media.englishTitle) return [];
+    var queries = buildQueries(media);
+    var searches = queries.map(function (q) { return searchSite(q); });
+    return Promise.all(searches).then(function (results) {
+      var cands = [];
+      var seen = {};
+      results.forEach(function (list) {
+        list.forEach(function (c) {
+          if (!seen[c.id]) { seen[c.id] = 1; cands.push(c); }
         });
       });
+      if (!cands.length) return [];
+      var best = null, bestScore = -1;
+      cands.forEach(function (c) {
+        var s = scoreCandidate(c.title, media);
+        if (s > bestScore) { bestScore = s; best = c; }
+      });
+      if (!best || bestScore < 50) return [];
+      return fetchText(BASE_URL + '/serie/' + best.id, { headers: { Referer: BASE_URL + '/' } })
+        .then(function (html) {
+          var seasons = parseSerie(html);
+          var ep = findEpisode(seasons, season, episode);
+          if (!ep) return [];
+          var capUrl = BASE_URL + '/serie/capitulo/' + ep.capituloId + '?t=' + ep.temporada;
+          return fetchText(capUrl, { headers: { Referer: BASE_URL + '/serie/' + best.id } })
+            .then(function (capHtml) {
+              var iframe = extractIframe(capHtml);
+              if (!iframe) return [];
+              return resolveIframe(iframe).then(function (r) {
+                if (!r || !r.url) return [];
+                var host = '';
+                try { host = iframe.split('/')[2] || ''; } catch (e) {}
+                return [{
+                  name: 'LaCartoons',
+                  title: 'LaCartoons ' + (r.quality || '720p') + ' Latino',
+                  url: r.url,
+                  quality: r.quality || '720p',
+                  language: 'Latino',
+                  headers: r.headers || { Referer: EMBED_ORIGIN + '/', Origin: EMBED_ORIGIN }
+                }];
+              });
+            });
+        })
+        .catch(function () { return []; });
     });
-  }).catch(function(err){
-    console.error('[LaCartoons] Error: ' + (err && err.message ? err.message : err));
-    return [];
-  });
+  }).catch(function () { return []; });
 }
+
+export { extractStreams, extractIframe, parseSerie, resolveIframe, searchSite, getMediaTitle, norm };

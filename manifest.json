@@ -442,26 +442,6 @@
       ]
     },
     {
-      "id": "lacartoons",
-      "name": "LaCartoons",
-      "description": "Rehabilitado 2026-09-29. 2026-09-30: alias ES (casper->gasparin) + scoring por alias + API de catalogo (getCatalogo/getSerie/getStreamCapitulo para la seccion Cartoons). Series animadas en latino (Cartoon Network, Nickelodeon, Disney…). Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.9",
-      "author": "Masters",
-      "supportedTypes": [
-        "tv"
-      ],
-      "filename": "providers/lacartoons.js",
-      "enabled": true,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=lacartoons.com&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
       "id": "masters",
       "name": "Masters (GnulaHD)",
       "description": "DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en latino, castellano y subtitulado. Solo video directo reproducible (validados en vivo).",
@@ -478,6 +458,26 @@
         "mkv"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=gnulahd.nu&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
+    },
+    {
+      "id": "lacartoons",
+      "name": "LaCartoons",
+      "description": "Reescrito desde cero 2026-10-03. Series animadas en latino. Estructura nueva del sitio (/serie/capitulo). Sin new Function.",
+      "version": "1.0.10",
+      "author": "Masters",
+      "supportedTypes": [
+        "tv"
+      ],
+      "filename": "providers/lacartoons.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=lacartoons.com&sz=128",
       "contentLanguage": [
         "es"
       ]
