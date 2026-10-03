@@ -1,12 +1,12 @@
 {
   "name": "MasterScrap Providers",
-  "version": "1.14.4",
+  "version": "1.14.5",
   "scrapers": [
     {
       "id": "cinecalidad",
       "name": "CineCalidad",
       "description": "Reescrito 2026-09-24: cinecalidad.ec salta a cinecalidad.am, SPA con API propia por TMDB (tmdb.cinecalidad.am) y player vimeos. Verificado: Dune 2, 1. Solo video directo reproducible (validados en vivo).",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -48,7 +48,7 @@
       "id": "cuevana",
       "name": "Cuevana",
       "description": "Películas y series en latino vía wv3.cuevana3.eu. Verificado 2026-09-23: Dune 2, 3 streams. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -111,7 +111,7 @@
       "id": "lamovie",
       "name": "LaMovie",
       "description": "Reescrito 2026-09-24: lamovie.org es una SPA con API por TMDB (tmdb.lamovie.org) y player vimeos. Pide el code por TMDB y verifica el m3u8 antes de emitirlo. Solo video directo reproducible (validados en vivo).",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -132,7 +132,7 @@
       "id": "latanime",
       "name": "Latanime (solo Latino)",
       "description": "Anime SOLO en latino de latanime.org: descarta lo marcado como castellano y exige que el slug o el título confirmen latino. Verificado: 15 animes con streams. Solo video directo reproducible (validados en vivo).",
-      "version": "1.1.3",
+      "version": "1.1.4",
       "author": "Masters",
       "supportedTypes": [
         "tv"
@@ -194,7 +194,7 @@
       "id": "pelisplusto",
       "name": "Pelisplusto",
       "description": "Películas y series en latino desde PelisPlusHD (uqlink + hosts directos). Verificado 2026-09-24: Dune 2, 6; The Boys S3E1, 2. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -424,7 +424,7 @@
       "id": "fanpelis",
       "name": "Fanpelis",
       "description": "Películas y series en latino de fanpelis.to (API tmdb.fanpelis.to /v1/playback). Solo video directo reproducible (validados en vivo).",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -445,7 +445,7 @@
       "id": "lacartoons",
       "name": "LaCartoons",
       "description": "Rehabilitado 2026-09-29. 2026-09-30: alias ES (casper->gasparin) + scoring por alias + API de catalogo (getCatalogo/getSerie/getStreamCapitulo para la seccion Cartoons). Series animadas en latino (Cartoon Network, Nickelodeon, Disney…). Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "author": "Masters",
       "supportedTypes": [
         "tv"
@@ -465,7 +465,7 @@
       "id": "masters",
       "name": "Masters (GnulaHD)",
       "description": "DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en latino, castellano y subtitulado. Solo video directo reproducible (validados en vivo).",
-      "version": "1.8.2",
+      "version": "1.8.3",
       "author": "Masters",
       "supportedTypes": [
         "movie",
