@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-10-03T15:15:35.003Z
+ * Generated: 2026-10-03T15:29:34.795Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7808,16 +7808,31 @@ function aliasQueries(text) {
   return out;
 }
 function getMediaTitle(tmdbId, tmdbType) {
-  var url = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY + "&language=es-MX";
-  return fetchJson(url).then(function(data) {
+  var base = "https://api.themoviedb.org/3/" + tmdbType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY;
+  return Promise.all([
+    fetchJson(base + "&language=es-MX").catch(function() {
+      return null;
+    }),
+    fetchJson(base + "&language=en-US").catch(function() {
+      return null;
+    })
+  ]).then(function(rs) {
+    var es = rs[0] || {}, en = rs[1] || {};
     var isMovie = tmdbType === "movie";
-    var date = isMovie ? data.release_date : data.first_air_date;
+    var date = isMovie ? es.release_date || en.release_date : es.first_air_date || en.first_air_date;
     return {
-      title: isMovie ? data.title : data.name,
-      originalTitle: isMovie ? data.original_title : data.original_name,
+      title: isMovie ? es.title || en.title : es.name || en.name,
+      originalTitle: isMovie ? es.original_title || en.original_title : es.original_name || en.original_name,
+      englishTitle: isMovie ? en.title : en.name,
       year: date && date.length >= 4 ? date.slice(0, 4) : null
     };
   });
+}
+function esLatino(t) {
+  if (!t)
+    return false;
+  var n = normalizeText(t);
+  return n.length >= 2 && /[a-z]/.test(n);
 }
 function searchSite(query) {
   var url = BASE_URL + "/?Titulo=" + encodeURIComponent(query);
@@ -8006,60 +8021,54 @@ function extractStreams(tmdbId, mediaType, season, episode) {
   episode = parseInt(episode, 10) || 1;
   return getMediaTitle(tmdbId, tmdbType).then(function(media) {
     var queries = [];
-    if (media.originalTitle)
-      queries.push(media.originalTitle);
-    if (media.title && media.title !== media.originalTitle)
-      queries.push(media.title);
-    var aliasQ = aliasQueries((media.originalTitle || "") + " " + (media.title || ""));
-    for (var aq = 0; aq < aliasQ.length; aq++) {
-      if (queries.indexOf(aliasQ[aq]) < 0)
-        queries.push(aliasQ[aq]);
+    function addQ(q) {
+      if (q && esLatino(q) && queries.indexOf(q) < 0)
+        queries.push(q);
     }
+    addQ(media.originalTitle);
+    addQ(media.title);
+    addQ(media.englishTitle);
+    var aliasQ = aliasQueries((media.originalTitle || "") + " " + (media.title || "") + " " + (media.englishTitle || ""));
+    for (var aq = 0; aq < aliasQ.length; aq++)
+      addQ(aliasQ[aq]);
     media.aliasTitles = aliasQ;
+    var STOPWORDS = { y: 1, de: 1, la: 1, el: 1, los: 1, las: 1, un: 1, una: 1, del: 1, al: 1, e: 1, u: 1, o: 1, en: 1, con: 1, por: 1, para: 1, the: 1, a: 1, an: 1, of: 1, and: 1, to: 1, in: 1, on: 1, vs: 1 };
+    var allText = normalizeText([media.originalTitle, media.title, media.englishTitle].filter(Boolean).join(" "));
+    var words = allText.split(" ").filter(function(w) {
+      return w.length >= 3 && !STOPWORDS[w];
+    });
+    var unique = {};
+    var keywords = [];
+    for (var i = 0; i < words.length; i++) {
+      if (!unique[words[i]]) {
+        unique[words[i]] = 1;
+        keywords.push(words[i]);
+      }
+    }
+    keywords.sort(function(a, b) {
+      return b.length - a.length;
+    });
+    keywords = keywords.slice(0, 3);
+    for (var ki = 0; ki < keywords.length; ki++)
+      addQ(keywords[ki]);
     if (!queries.length)
       return [];
-    var all = [];
-    var chain = Promise.resolve();
-    queries.forEach(function(q) {
-      chain = chain.then(function() {
-        return searchSite(q).then(function(c) {
-          all = all.concat(c);
-        });
+    return Promise.all(queries.map(function(q) {
+      return searchSite(q).catch(function() {
+        return [];
       });
-    });
-    return chain.then(function() {
-      if (all.length > 0)
-        return all;
-      var STOPWORDS = { y: 1, de: 1, la: 1, el: 1, los: 1, las: 1, un: 1, una: 1, del: 1, al: 1, e: 1, u: 1, o: 1, en: 1, con: 1, por: 1, para: 1, the: 1, a: 1, an: 1, of: 1, and: 1, to: 1, in: 1, on: 1, vs: 1 };
-      var allText = normalizeText((media.originalTitle || "") + " " + (media.title || ""));
-      var words = allText.split(" ").filter(function(w) {
-        return w.length >= 3 && !STOPWORDS[w];
-      });
-      var unique = {};
-      var keywords = [];
-      for (var i = 0; i < words.length; i++) {
-        if (!unique[words[i]]) {
-          unique[words[i]] = 1;
-          keywords.push(words[i]);
+    })).then(function(lists) {
+      var all = [], seen = {};
+      for (var li = 0; li < lists.length; li++) {
+        for (var ci = 0; ci < lists[li].length; ci++) {
+          var c = lists[li][ci];
+          if (c && c.id && !seen[c.id]) {
+            seen[c.id] = 1;
+            all.push(c);
+          }
         }
       }
-      keywords.sort(function(a, b) {
-        return b.length - a.length;
-      });
-      keywords = keywords.slice(0, 3);
-      if (!keywords.length)
-        return all;
-      var kChain = Promise.resolve();
-      keywords.forEach(function(kw) {
-        kChain = kChain.then(function() {
-          return searchSite(kw).then(function(c) {
-            all = all.concat(c);
-          });
-        });
-      });
-      return kChain.then(function() {
-        return all;
-      });
+      return all;
     }).then(function(cands) {
       var best = pickBest(cands, media);
       if (!best)

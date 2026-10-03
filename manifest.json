@@ -1,6 +1,6 @@
 {
   "name": "MasterScrap Providers",
-  "version": "1.14.5",
+  "version": "1.14.6",
   "scrapers": [
     {
       "id": "cinecalidad",
@@ -445,7 +445,7 @@
       "id": "lacartoons",
       "name": "LaCartoons",
       "description": "Rehabilitado 2026-09-29. 2026-09-30: alias ES (casper->gasparin) + scoring por alias + API de catalogo (getCatalogo/getSerie/getStreamCapitulo para la seccion Cartoons). Series animadas en latino (Cartoon Network, Nickelodeon, Disney…). Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "author": "Masters",
       "supportedTypes": [
         "tv"
