@@ -131,12 +131,12 @@ var OMDB_KEY = "5b0e8a3e";
 var OMDB_BASE = "http://www.omdbapi.com/";
 
 // Fuentes de la pagina del embed (Dart: _kBaseUrlSeriesKao / _kBaseUrlXupalace).
-// xupalace hoy responde 301 hacia embed69.org, por eso se agrega embed69 como
-// tercer intento directo.
+// xupalace.org hoy responde 301 hacia embed69.org: se eliminó por redundante.
+// serieskao.top y embed69.org sirven el mismo motor/contenido; se piden en
+// paralelo y la primera que traiga embeds gana.
 var SOURCES = [
-  { url: "https://serieskao.top/vidurl/", ref: "https://serieskao.top/", org: "https://serieskao.top" },
-  { url: "https://xupalace.org/video/", ref: "https://xupalace.org/", org: "https://xupalace.org" },
   { url: "https://embed69.org/f/", ref: "https://embed69.org/", org: "https://embed69.org" },
+  { url: "https://serieskao.top/vidurl/", ref: "https://serieskao.top/", org: "https://serieskao.top" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -498,7 +498,7 @@ function parseImdbFromTmdb(data) {
 // con red real). El motor da 9 s, pero en el Fire TV la red es mas lenta que en
 // Node: con 6 s llegaba tarde y devolvia 0 enlaces; con 4,2 s siempre devuelve
 // los que ya resolvio (con sus cabeceras, que es lo que el relay necesita).
-var BUDGET_MS = 4200;
+var BUDGET_MS = 6000;
 
 // Date es parte del lenguaje (no una API de host), con fallback por si no
 // estuviera: sin reloj, el techo real lo pone withTimeout igual.
@@ -1183,13 +1183,15 @@ function collect(tmdbId, mediaType, season, episode, onPartial) {
   return getImdb(id, type, Math.min(3000, Math.max(1200, restante() - 2200))).then(function (imdbId) {
     if (!imdbId) return [];
     var variants = idVariants(imdbId, isMovie, s, ep);
-    // Como maximo dos formatos de id (el sitio usa 1x01 / 1x1 y variantes con
-    // guiones); mas variantes en serie no compensan el tiempo que consumen.
-    var wanted = isMovie ? variants.slice(0, 1) : variants.slice(0, 2);
+    // Solo el primer formato de id trae resultados (verificado 2026-10-02:
+    // la segunda variante siempre viene vacía). Pedir más variantes en
+    // paralelo solo quema presupuesto de tiempo.
+    var wanted = variants.slice(0, 1);
 
-    // TODAS las paginas candidatas (fuente x variante) se piden EN PARALELO:
-    // ir fuente por fuente era la mitad del tiempo perdido.
-    var tPage = Math.max(1200, Math.min(4000, restante() - 2500));
+    // Las páginas candidatas (fuente x variante) se piden EN PARALELO.
+    // Las páginas hoy tardan 1.4-1.7 s en responder: el piso de tPage sube
+    // a 2500 ms porque con 1200 ms morían siempre por timeout.
+    var tPage = Math.max(2500, Math.min(4000, restante() - 2000));
     var tasks = [];
     for (var si = 0; si < SOURCES.length; si++) {
       for (var vi = 0; vi < wanted.length; vi++) {
