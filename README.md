@@ -27,6 +27,24 @@ Repositorio con los **providers JS que corre MasterScrap** (la app de TV). La ap
 - **Arreglas un provider aquí, cierras y abres la app, y ya está**: no hay que reinstalar ni
   recompilar nada.
 
+## Las URLs, para copiar
+
+La app lee siempre la rama `main`. Estas son las direcciones exactas (el botón **Raw** de GitHub,
+arriba a la derecha de cada fichero, lleva al mismo sitio; y cada bloque de aquí tiene su icono de
+copiar):
+
+```
+https://raw.githubusercontent.com/josueluz89/scraperstv-providers/main/manifest.json
+https://raw.githubusercontent.com/josueluz89/scraperstv-providers/main/providers/<id>.js
+```
+
+- Registro: `manifest.json` — la app lo baja **en cada apertura**.
+- Cada provider: `providers/<id>.js`, por ejemplo `providers/cuevana.js`.
+- Vista del repo en el navegador: https://github.com/josueluz89/scraperstv-providers
+
+Para comprobar que una dirección responde sin abrir la app, pégala en el navegador: tiene que
+mostrar el texto del fichero (o el JSON), no un 404.
+
 ## Providers activos (18)
 
 | Nombre | id | Películas | Series |

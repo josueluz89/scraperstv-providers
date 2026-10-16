@@ -1,6 +1,7 @@
-import { fetchText, fetchWithRetry, fetchWithTimeout } from './http.js';
+import { fetchText, fetchJson, fetchWithRetry, fetchWithTimeout } from './http.js';
 import { detectQualityFromM3U8 } from './quality.js';
 import { resolveVoeStream } from './voe.js';
+import CryptoJS from 'crypto-js';
 
 function getUrlOrigin(url) {
   if (!url) return '';
@@ -201,54 +202,136 @@ export async function resolveVidHideProStream(embedUrl) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Byse Frontend (antes Filemoon: filemoon.sx, bysebuho.com, gn1r5n.org, ...).
+// La página es una cáscara SPA de ~1.6 KB; el video viene de:
+//   GET <origin>/api/videos/<code>/  ->  { playback: { iv, payload, key_parts[30], version } }
+// playback está cifrado con AES-256-GCM. La clave NO viene completa: version
+// (1-20) elige 2 fragmentos reales en los índices [v, 31-v] (base 1); el resto
+// son señuelos. Se descifra con AES-256-CTR (CryptoJS, ya empaquetado) y se
+// valida con JSON.parse en vez del tag GCM. Video borrado ->
+// {"error":"video record missing: video not found"} (404) -> null.
+function byseB64ToWordArray(s) {
+  try {
+    var norm = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (norm.length % 4 !== 0) norm += '=';
+    return CryptoJS.enc.Base64.parse(norm);
+  } catch (e) {
+    return null;
+  }
+}
+
+function byseKeyParts(playback) {
+  try {
+    var parts = playback.key_parts || [];
+    var total = parts.length;
+    var v = parseInt(playback.version, 10);
+    var pair = [];
+    if (v >= 1 && v <= 20) pair = [v, 31 - v];
+    var picked = [];
+    for (var i = 0; i < pair.length; i++) {
+      var idx = pair[i];
+      if (idx >= 1 && idx <= total && parts[idx - 1]) picked.push(parts[idx - 1]);
+    }
+    // version fuera de rango o fragmentos inválidos: usar todos (como el bundle original).
+    if (picked.length !== pair.length || picked.length === 0) return parts;
+    return picked;
+  } catch (e) {
+    return [];
+  }
+}
+
+function byseDecryptPlayback(playback) {
+  try {
+    if (!playback || !playback.payload || !playback.iv) return null;
+    var parts = byseKeyParts(playback);
+    if (!parts.length) return null;
+    var keyHex = '';
+    for (var i = 0; i < parts.length; i++) {
+      var wa = byseB64ToWordArray(parts[i]);
+      if (!wa) return null;
+      keyHex += wa.toString(CryptoJS.enc.Hex);
+    }
+    var keyWA = CryptoJS.enc.Hex.parse(keyHex);
+    var ivWA = byseB64ToWordArray(playback.iv);
+    var fullWA = byseB64ToWordArray(playback.payload);
+    if (!keyWA || !ivWA || !fullWA) return null;
+    var ivHex = ivWA.toString(CryptoJS.enc.Hex);
+    // GCM: J0 = nonce(12) || 0x00000001 y el primer bloque CTR usa J0+1.
+    // CryptoJS CTR cifra el contador tal cual y luego incrementa, así que se
+    // le pasa directamente nonce || 0x00000002.
+    if (ivHex.length === 24) ivHex = ivHex + '00000002';
+    var ctrIv = CryptoJS.enc.Hex.parse(ivHex);
+    var fullHex = fullWA.toString(CryptoJS.enc.Hex);
+    // El tag GCM son los últimos 16 bytes: se descartan (se valida con JSON.parse).
+    if (fullHex.length < 32) return null;
+    var ctHex = fullHex.substring(0, fullHex.length - 32);
+    var cipherParams = CryptoJS.lib.CipherParams.create({
+      ciphertext: CryptoJS.enc.Hex.parse(ctHex)
+    });
+    var decrypted = CryptoJS.AES.decrypt(cipherParams, keyWA, {
+      iv: ctrIv,
+      mode: CryptoJS.mode.CTR,
+      padding: CryptoJS.pad.NoPadding
+    });
+    var plain = decrypted.toString(CryptoJS.enc.Utf8);
+    if (!plain || plain.indexOf('{') !== 0) return null;
+    return JSON.parse(plain);
+  } catch (e) {
+    return null;
+  }
+}
+
+function pickBestByseSource(sources) {
+  if (!sources || !sources.length) return null;
+  var best = null;
+  var bestScore = -1;
+  for (var i = 0; i < sources.length; i++) {
+    var s = sources[i] || {};
+    var url = s.url || s.file;
+    if (typeof url !== 'string' || url.indexOf('http') !== 0) continue;
+    var score = 0;
+    var label = String(s.label || '');
+    var m = label.match(/(\d{3,4})/);
+    if (m) score = parseInt(m[1], 10);
+    if (url.indexOf('.m3u8') !== -1) score += 0.5;
+    if (score > bestScore) { bestScore = score; best = { url: url, label: label }; }
+  }
+  return best;
+}
+
 export async function resolveFilemoonStream(embedUrl) {
   try {
-    const defaultHeaders = {
-      'Referer': embedUrl,
-      'Sec-Fetch-Dest': 'iframe',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'cross-site',
-      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0',
-    };
+    const m = String(embedUrl || '').match(/\/(?:e|d|v)\/([A-Za-z0-9_-]+)/);
+    if (!m) return null;
+    const code = m[1];
+    const origin = getUrlOrigin(embedUrl);
+    if (!origin) return null;
 
-    const initialResponse = await fetchWithRetry(embedUrl, {
-      headers: { ...defaultHeaders, Referer: 'https://embed69.org/' },
-    });
-
-    const iframeSrc = initialResponse.match(/<iframe[^>]*src=["']([^"']+)["']/i);
-    if (iframeSrc) {
-      let iframeUrl = iframeSrc[1];
-      if (!iframeUrl.startsWith('http')) {
-        iframeUrl = getUrlOrigin(embedUrl) + iframeUrl;
-      }
-      const iframeHtml = await fetchWithRetry(iframeUrl, {
-        headers: { ...defaultHeaders, 'Accept-Language': 'en-US,en;q=0.5', Referer: embedUrl },
-      });
-      const unpacked = unpackPacked(iframeHtml);
-      if (unpacked) {
-        const videoMatch = unpacked.match(/sources:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/i);
-        if (videoMatch) {
-          let url = videoMatch[1];
-          if (!url.startsWith('http')) url = getUrlOrigin(iframeUrl) + url;
-          const quality = await detectQualityFromM3U8(url);
-          return { url, quality, headers: { Referer: getUrlOrigin(iframeUrl) + '/' } };
+    // 1) API Byse (sitio actual).
+    try {
+      const data = await fetchJson(origin + '/api/videos/' + code + '/', {
+        headers: {
+          'Referer': embedUrl,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json,*/*;q=0.8'
         }
+      });
+      if (data && data.playback && data.playback.payload) {
+        const plain = byseDecryptPlayback(data.playback);
+        const best = pickBestByseSource(plain && plain.sources);
+        if (best) {
+          const quality = await detectQualityFromM3U8(best.url);
+          return { url: best.url, quality, headers: { Referer: origin + '/' } };
+        }
+        return null;
       }
+      // {"error": ...} o sin playback = video borrado / respuesta inesperada.
+      return null;
+    } catch (e) {
+      // 404 (video borrado) u otro error de la API: no hay fallback útil.
       return null;
     }
-
-    const unpacked = unpackPacked(initialResponse);
-    if (unpacked) {
-      const videoMatch = unpacked.match(/sources:\s*\[\s*\{\s*file\s*:\s*"([^"]+)"/i);
-      if (videoMatch) {
-        let url = videoMatch[1];
-        if (!url.startsWith('http')) url = getUrlOrigin(embedUrl) + url;
-        const quality = await detectQualityFromM3U8(url);
-        return { url, quality, headers: { Referer: getUrlOrigin(embedUrl) + '/' } };
-      }
-    }
-
-    return null;
   } catch (e) {
     return null;
   }
@@ -473,15 +556,54 @@ export async function resolveVidaraStream(embedUrl) {
 }
 
 export async function resolveOkRuStream(embedUrl) {
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  const HEADERS = {
+    'User-Agent': UA,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
+    Referer: 'https://ok.ru/'
+  };
+
+  function pickBestVideo(videos) {
+    if (!videos || !videos.length) return null;
+    let best = null;
+    let bestScore = -1;
+    for (let i = 0; i < videos.length; i++) {
+      const v = videos[i] || {};
+      const url = v.url;
+      if (typeof url !== 'string' || url.indexOf('http') !== 0) continue;
+      let score = 0;
+      const km = String(v.key || v.name || '').match(/(\d{3,4})/);
+      if (km) score = parseInt(km[1], 10);
+      else if (/hd/i.test(String(v.key))) score = 720;
+      else if (/sd/i.test(String(v.key))) score = 480;
+      if (url.indexOf('.m3u8') !== -1) score += 0.5;
+      if (score > bestScore) { bestScore = score; best = url; }
+    }
+    return best;
+  }
+
   try {
-    const html = await fetchWithRetry(embedUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
-        Referer: 'https://ok.ru/',
-      },
-    });
+    // 1) Endpoint meta de mail.ru/ok.ru: devuelve {videos:[{key,url}]}.
+    // Video borrado -> {"error":"video_not_found"} -> null.
+    const idm = String(embedUrl || '').match(/video(?:embed)?\/(\d+)/) ||
+                String(embedUrl || '').match(/(\d{8,})/);
+    if (idm) {
+      try {
+        const meta = await fetchJson('https://my.mail.ru/+/video/meta/' + idm[1], {
+          headers: { 'User-Agent': UA, 'Referer': 'https://my.mail.ru/', 'Accept': 'application/json,*/*;q=0.8' }
+        });
+        const best = pickBestVideo(meta && meta.videos);
+        if (best) {
+          return { url: best, quality: '720p', headers: { Referer: 'https://ok.ru/', 'User-Agent': UA } };
+        }
+      } catch (e) {
+        // cae al scraper legacy de la página
+      }
+    }
+
+    // 2) Legacy: hlsManifestUrl en el HTML del embed.
+    const html = await fetchWithRetry(embedUrl, { headers: HEADERS });
 
     // flashvars metadata is HTML-escaped JSON: &quot;hlsManifestUrl&quot;:&quot;URL&quot;
     // with \u0026 for & inside the URL.
@@ -494,8 +616,69 @@ export async function resolveOkRuStream(embedUrl) {
       quality: '720p',
       headers: {
         Referer: 'https://ok.ru/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'User-Agent': UA,
       },
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mixdrop (mixdrop.co/e/<code>): la página trae JS empaquetado (p.a.c.k.e.r)
+// con MDCore.wurl / vfile = URL directa del mp4. Video borrado = lander
+// (window.location.href="/lander") -> null.
+export async function resolveMixdropStream(embedUrl) {
+  try {
+    const html = await fetchWithRetry(embedUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': embedUrl
+      }
+    });
+    if (!html || html.indexOf('/lander') !== -1) return null;
+    const unpacked = unpackPacked(html);
+    const src = unpacked || html;
+    let m = src.match(/MDCore\s*\.\s*wurl\s*=\s*"([^"]+)"/) ||
+            src.match(/["']wurl["']\s*:\s*["']([^"']+)["']/) ||
+            src.match(/\bwurl\s*=\s*"([^"]+)"/) ||
+            src.match(/\bvfile\s*=\s*"([^"]+)"/) ||
+            src.match(/["']vfile["']\s*:\s*["']([^"']+)["']/);
+    if (!m) return null;
+    let url = m[1].replace(/\\/g, '');
+    if (url.indexOf('//') === 0) url = 'https:' + url;
+    if (url.indexOf('http') !== 0) return null;
+    return {
+      url,
+      quality: 'HD',
+      headers: { Referer: getUrlOrigin(embedUrl) + '/' }
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mp4Upload (mp4upload.com/embed-<code>.html): videojs con player.src({type:
+// "video/mp4", src: "https://.../video.mp4"}). El mp4 se sirve como
+// application/octet-stream: el validador lo acepta por extensión.
+export async function resolveMp4uploadStream(embedUrl) {
+  try {
+    const html = await fetchWithRetry(embedUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.mp4upload.com/'
+      }
+    });
+    if (!html) return null;
+    let m = html.match(/player\.src\(\{\s*type:\s*"video\/mp4",\s*src:\s*"([^"]+)"/) ||
+            html.match(/type:\s*"video\/mp4",\s*src:\s*"([^"]+)"/) ||
+            html.match(/"src"\s*:\s*"(https?:[^"]+\.mp4[^"]*)"/);
+    if (!m) return null;
+    return {
+      url: m[1],
+      quality: 'HD',
+      headers: { Referer: 'https://www.mp4upload.com/' }
     };
   } catch (e) {
     return null;
@@ -548,10 +731,17 @@ export function getEmbedResolver(url) {
       url.includes('dood.to') || url.includes('dood.watch') || url.includes('dood.so')) {
     return resolveDoodStream;
   }
+  if (url.includes('mixdrop')) {
+    return resolveMixdropStream;
+  }
+  if (url.includes('mp4upload')) {
+    return resolveMp4uploadStream;
+  }
   return null;
 }
 
 export function getServerLabel(url) {
+  if (url.includes('ok.ru')) return 'OkRu';
   if (url.includes('voe.sx') || url.includes('cloudwindow')) return 'VOE';
   if (url.includes('streamwish') || url.includes('hlswish') || url.includes('vibuxer') ||
       url.includes('strwish') || url.includes('premilkyway')) return 'StreamWish';
@@ -568,5 +758,7 @@ export function getServerLabel(url) {
   if (url.includes('goodstream')) return 'GoodStream';
   if (url.includes('vimeos')) return 'Vimeos';
   if (url.includes('doodstream') || url.includes('dsvplay') || url.includes('dood.')) return 'Dood';
+  if (url.includes('mixdrop')) return 'Mixdrop';
+  if (url.includes('mp4upload')) return 'Mp4Upload';
   return 'Online';
 }

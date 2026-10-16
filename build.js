@@ -20,12 +20,14 @@ const path = require('path');
 const srcDir = path.join(__dirname, 'src');
 const outDir = path.join(__dirname, 'providers');
 
-// Modules that the Nuvio app provides - don't bundle these
+// Modules that the Nuvio app provides - don't bundle these.
+// NOTA 2026-10-03: crypto-js se sacó de esta lista porque la app no lo
+// provee de forma confiable; sin él los bundles morían al cargar
+// ("Cannot find module crypto-js") en QuickJS. Ahora se empaqueta dentro.
 const EXTERNAL_MODULES = [
     'cheerio-without-node-native',
     'react-native-cheerio',
     'cheerio',
-    'crypto-js',
     'axios'
 ];
 

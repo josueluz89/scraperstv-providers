@@ -3,9 +3,16 @@ import { getEmbedResolver, mapDomain } from '../shared/embedResolvers.js';
 import { decodeEmbed69Page, resolveHostStream, familyOf } from './embed69.js';
 
 const TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
+// Un solo espejo. No hay fallback: si el titulo no esta aqui, el provider devuelve 0 (paso con
+// "La muerte de Robin Hood" 2026, que si esta en el espejo .to del mismo sitio).
 const MAIN_URL = 'https://pelisplushd.bz';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-const RESOLVE_TIMEOUT = 15000;
+// 15 s era DEMASIADO (medido 2026-09-25): el motor da un presupuesto por busqueda y este
+// provider se pasaba, asi que el interprete QuickJS se liberaba con trabajos pendientes
+// ("Failed to execute pending jobs") y el provider devolvia 0 enlaces. Con 15 s, DOS
+// resoluciones lentas ya agotaban todo. 5 s deja margen para las que responden rapido (el
+// grueso de estos hosts contesta en <1,5 s) y no se come el presupuesto.
+const RESOLVE_TIMEOUT = 5000;
 
 var ACCENT_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o' };
 function stripAccents(s) {

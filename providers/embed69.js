@@ -1,3 +1,97 @@
+// ===== MasterScrap: validacion de enlaces funcionales (inyectado) =====
+// Prueba cada URL con sus headers reales; descarta muertos (4xx/5xx/timeout),
+// elimina duplicados y ordena por calidad. ESTRICTO v2: solo pasa VIDEO REAL
+// reproducible (video/*, mpegurl o extension de video con 2xx); las paginas
+// HTML de embed sin resolver se descartan. QuickJS-safe.
+var __msValidate = (function () {
+  var TIMEOUT_MS = 7000;
+  var CONCURRENCY = 4;
+  function qualityRank(q) {
+    if (!q) return 0;
+    var s = String(q).toLowerCase();
+    if (s.indexOf('4k') !== -1 || s.indexOf('2160') !== -1) return 2160;
+    var m = s.match(/(\d{3,4})\s*p/);
+    if (m) return parseInt(m[1], 10);
+    return 0;
+  }
+  function isM3u8(url) { return /\.m3u8(\?|#|$)/i.test(url || ''); }
+  function hasVideoExt(url) { return /\.(mp4|m3u8|mkv|webm|ts|m4v|mov)(\?|#|$)/i.test(url || ''); }
+  function isVideoResp(ct, url) {
+    var c = '';
+    try { c = String(ct || '').toLowerCase().split(';')[0].trim(); } catch (e) {}
+    if (c.indexOf('video/') === 0) return true;
+    if (c === 'application/vnd.apple.mpegurl' || c === 'application/x-mpegurl') return true;
+    if (c === 'application/octet-stream' || c === 'binary/octet-stream') return hasVideoExt(url);
+    if (!c) return hasVideoExt(url);
+    return false;
+  }
+  function getCT(res) {
+    try { if (res && res.headers && typeof res.headers.get === 'function') return res.headers.get('content-type'); } catch (e) {}
+    return '';
+  }
+  function checkUrl(url, headers, timeoutMs) {
+    return new Promise(function (resolve) {
+      var done = false, timer = null, controller = null;
+      function finish(ok) {
+        if (done) return; done = true;
+        if (timer) { try { clearTimeout(timer); } catch (e) {} timer = null; }
+        if (controller) { try { controller.abort(); } catch (e) {} }
+        resolve(!!ok);
+      }
+      if (!url || typeof url !== 'string' || url.indexOf('http') !== 0) { resolve(false); return; }
+      if (typeof setTimeout !== 'undefined') {
+        timer = setTimeout(function () { timer = null; finish(false); }, timeoutMs || TIMEOUT_MS);
+      }
+      var reqHeaders = { 'Range': 'bytes=0-2047',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+      if (headers) for (var k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k) && headers[k]) reqHeaders[k] = headers[k];
+      }
+      var reqInit = { headers: reqHeaders, redirect: 'follow' };
+      try {
+        if (typeof AbortController !== 'undefined') { controller = new AbortController(); reqInit.signal = controller.signal; }
+      } catch (e) { controller = null; }
+      fetch(url, reqInit).then(function (res) {
+        var st = res.status;
+        if (st === 200 || st === 206 || st === 416) {
+          if (isM3u8(url)) {
+            res.text().then(function (t) { finish(t && t.indexOf('#EXTM3U') !== -1); }).catch(function () { finish(true); });
+          } else if (st === 416) { finish(true); }
+          else if (!isVideoResp(getCT(res), url)) { finish(false); }
+          else finish(true);
+        } else finish(false);
+      }).catch(function () { finish(false); });
+    });
+  }
+  function filterWorkingStreams(streams, opts) {
+    opts = opts || {};
+    var timeout = opts.timeoutMs || TIMEOUT_MS, concurrency = opts.concurrency || CONCURRENCY;
+    var seen = {}, uniq = [];
+    (streams || []).forEach(function (s) { if (!s || !s.url || seen[s.url]) return; seen[s.url] = 1; uniq.push(s); });
+    if (uniq.length === 0) return Promise.resolve([]);
+    var results = new Array(uniq.length), cursor = 0;
+    function worker() {
+      if (cursor >= uniq.length) return Promise.resolve();
+      var i = cursor++, st = uniq[i];
+      return checkUrl(st.url, st.headers, timeout).then(function (ok) { results[i] = ok ? st : null; })
+        .catch(function () { results[i] = null; }).then(worker);
+    }
+    var workers = [], n = Math.min(concurrency, uniq.length);
+    for (var w = 0; w < n; w++) workers.push(worker());
+    return Promise.all(workers).then(function () {
+      var alive = [];
+      for (var i = 0; i < results.length; i++) if (results[i]) alive.push(results[i]);
+      alive.sort(function (a, b) { return qualityRank(b.quality) - qualityRank(a.quality); });
+      return alive;
+    }).catch(function () { return []; });
+  }
+  function withWorkingStreams(p) {
+    return Promise.resolve(p).then(filterWorkingStreams).catch(function () { return []; });
+  }
+  return { withWorkingStreams: withWorkingStreams, filterWorkingStreams: filterWorkingStreams };
+})();
+// ===== fin validacion inyectada =====
+
 // embed69 — puerto a JS de lib/data/extractors/providers/embed69_extractor.dart
 // (repo josueluz89/scraperstv-providers) al formato que ejecuta el motor de
 // MasterScrap: CommonJS `module.exports = { getStreams }`, solo fetch + JSON +
@@ -37,12 +131,12 @@ var OMDB_KEY = "5b0e8a3e";
 var OMDB_BASE = "http://www.omdbapi.com/";
 
 // Fuentes de la pagina del embed (Dart: _kBaseUrlSeriesKao / _kBaseUrlXupalace).
-// xupalace hoy responde 301 hacia embed69.org, por eso se agrega embed69 como
-// tercer intento directo.
+// xupalace.org hoy responde 301 hacia embed69.org: se eliminó por redundante.
+// serieskao.top y embed69.org sirven el mismo motor/contenido; se piden en
+// paralelo y la primera que traiga embeds gana.
 var SOURCES = [
-  { url: "https://serieskao.top/vidurl/", ref: "https://serieskao.top/", org: "https://serieskao.top" },
-  { url: "https://xupalace.org/video/", ref: "https://xupalace.org/", org: "https://xupalace.org" },
   { url: "https://embed69.org/f/", ref: "https://embed69.org/", org: "https://embed69.org" },
+  { url: "https://serieskao.top/vidurl/", ref: "https://serieskao.top/", org: "https://serieskao.top" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -404,7 +498,7 @@ function parseImdbFromTmdb(data) {
 // con red real). El motor da 9 s, pero en el Fire TV la red es mas lenta que en
 // Node: con 6 s llegaba tarde y devolvia 0 enlaces; con 4,2 s siempre devuelve
 // los que ya resolvio (con sus cabeceras, que es lo que el relay necesita).
-var BUDGET_MS = 4200;
+var BUDGET_MS = 8500;
 
 // Date es parte del lenguaje (no una API de host), con fallback por si no
 // estuviera: sin reloj, el techo real lo pone withTimeout igual.
@@ -1089,13 +1183,15 @@ function collect(tmdbId, mediaType, season, episode, onPartial) {
   return getImdb(id, type, Math.min(3000, Math.max(1200, restante() - 2200))).then(function (imdbId) {
     if (!imdbId) return [];
     var variants = idVariants(imdbId, isMovie, s, ep);
-    // Como maximo dos formatos de id (el sitio usa 1x01 / 1x1 y variantes con
-    // guiones); mas variantes en serie no compensan el tiempo que consumen.
-    var wanted = isMovie ? variants.slice(0, 1) : variants.slice(0, 2);
+    // Solo el primer formato de id trae resultados (verificado 2026-10-02:
+    // la segunda variante siempre viene vacía). Pedir más variantes en
+    // paralelo solo quema presupuesto de tiempo.
+    var wanted = variants.slice(0, 1);
 
-    // TODAS las paginas candidatas (fuente x variante) se piden EN PARALELO:
-    // ir fuente por fuente era la mitad del tiempo perdido.
-    var tPage = Math.max(1200, Math.min(4000, restante() - 2500));
+    // Las páginas candidatas (fuente x variante) se piden EN PARALELO.
+    // Las páginas hoy tardan 6-7 s en responder en conexión fría (el sitio se
+    // puso muy lento): se usa casi todo el presupuesto restante.
+    var tPage = Math.max(2500, Math.min(7500, restante() - 500));
     var tasks = [];
     for (var si = 0; si < SOURCES.length; si++) {
       for (var vi = 0; vi < wanted.length; vi++) {
@@ -1168,7 +1264,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
       return ULTIMO_RESULTADO || [];
     });
   // Techos: BUDGET_MS de trabajo interno + 500 ms de margen (el motor corta a
-  // los ~9 s, y con esto el provider responde siempre antes de 7 s).
+  // los ~9 s, y con esto el provider responde siempre antes de 9 s).
   return withTimeout(run, BUDGET_MS + 500, function () {
     return ULTIMO_RESULTADO || [];
   }).catch(function () {
@@ -1216,3 +1312,17 @@ module.exports = { getStreams };
 //   - Algunas URLs del CDN rotativo del host (subdominios *.shop/*.sbs/*.cyou)
 //     verifican 200 y mueren segundos despues: es del host, no del codigo. Las
 //     URLs estables (self-hosted /stream/... y morencius.com) se mantienen.
+
+// ===== MasterScrap: getStreams solo devuelve enlaces funcionales =====
+(function () {
+  try {
+    var __origGetStreams = module.exports.getStreams;
+    if (typeof __origGetStreams === 'function') {
+      module.exports = {
+        getStreams: function (tmdbId, mediaType, season, episode) {
+          return __msValidate.withWorkingStreams(__origGetStreams(tmdbId, mediaType, season, episode));
+        }
+      };
+    }
+  } catch (e) {}
+})();

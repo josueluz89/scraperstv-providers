@@ -1,282 +1,612 @@
-// ── Polyfills del runtime QuickJS (Nuvio no trae normalize/matchAll/URLSearchParams) ──
-var ACENTOS_KL = {
-  "\u00e1": "a", "\u00e0": "a", "\u00e4": "a", "\u00e2": "a", "\u00e3": "a", "\u00e5": "a",
-  "\u00e9": "e", "\u00e8": "e", "\u00eb": "e", "\u00ea": "e",
-  "\u00ed": "i", "\u00ec": "i", "\u00ef": "i", "\u00ee": "i",
-  "\u00f3": "o", "\u00f2": "o", "\u00f6": "o", "\u00f4": "o", "\u00f5": "o",
-  "\u00fa": "u", "\u00f9": "u", "\u00fc": "u", "\u00fb": "u",
-  "\u00f1": "n", "\u00e7": "c",
-  "\u00c1": "A", "\u00c0": "A", "\u00c4": "A", "\u00c2": "A", "\u00c3": "A",
-  "\u00c9": "E", "\u00c8": "E", "\u00cb": "E", "\u00ca": "E",
-  "\u00cd": "I", "\u00cc": "I", "\u00cf": "I", "\u00ce": "I",
-  "\u00d3": "O", "\u00d2": "O", "\u00d6": "O", "\u00d4": "O", "\u00d5": "O",
-  "\u00da": "U", "\u00d9": "U", "\u00dc": "U", "\u00db": "U",
-  "\u00d1": "N", "\u00c7": "C"
-};
-if (typeof String.prototype.normalize !== "function") {
-  String.prototype.normalize = function (form) {
-    if (form === "NFD" || form === "NFKD") {
-      return String(this).replace(/[\u00c0-\u017f]/g, function (c) {
-        return ACENTOS_KL[c] || c;
-      });
-    }
-    return String(this);
-  };
-}
-if (typeof String.prototype.matchAll !== "function") {
-  String.prototype.matchAll = function (re) {
-    var g = re && re.global ? re : new RegExp(re.source, ((re && re.flags) || "").indexOf("g") >= 0 ? re.flags : ((re && re.flags) || "") + "g");
-    var out = [];
-    var s = String(this);
-    var m;
-    g.lastIndex = 0;
-    while ((m = g.exec(s)) !== null) {
-      out.push(m);
-      if (m.index === g.lastIndex) g.lastIndex++;
-    }
-    return out;
-  };
-}
-if (typeof URLSearchParams === "undefined") {
-  var URLSearchParams = function (init) {
-    this._pares = [];
-    if (typeof init === "string") {
-      var trozos = String(init).replace(/^\?/, "").split("&");
-      for (var i = 0; i < trozos.length; i++) {
-        if (!trozos[i]) continue;
-        var kv = trozos[i].split("=");
-        this._pares.push([decodeURIComponent(kv[0] || ""), decodeURIComponent(kv.slice(1).join("=") || "")]);
+/**
+ * seriesmetro_kl - Built from src/seriesmetro_kl/
+ * Generated: 2026-10-07T22:54:23.807Z
+ */
+
+// src/shared/http.js
+var FETCH_TIMEOUT = 12e3;
+function fetchWithTimeout(url, options, timeout) {
+  if (!options)
+    options = {};
+  var ms = timeout || FETCH_TIMEOUT;
+  var controller = null;
+  var signal = null;
+  try {
+    if (typeof AbortController !== "undefined") {
+      controller = new AbortController();
+      signal = controller.signal;
+      if (typeof setTimeout !== "undefined") {
+        (function(c) {
+          setTimeout(function() {
+            try {
+              c.abort();
+            } catch (e) {
+            }
+          }, ms);
+        })(controller);
       }
-    } else if (init && typeof init === "object") {
-      var claves = Object.keys(init);
-      for (var j = 0; j < claves.length; j++) this._pares.push([claves[j], String(init[claves[j]])]);
     }
-  };
-  URLSearchParams.prototype.append = function (k, v) { this._pares.push([String(k), String(v)]); };
-  URLSearchParams.prototype.set = function (k, v) {
-    var clave = String(k);
-    for (var i = 0; i < this._pares.length; i++) {
-      if (this._pares[i][0] === clave) { this._pares[i][1] = String(v); return; }
-    }
-    this._pares.push([clave, String(v)]);
-  };
-  URLSearchParams.prototype.toString = function () {
-    var out = [];
-    for (var i = 0; i < this._pares.length; i++) {
-      out.push(encodeURIComponent(this._pares[i][0]) + "=" + encodeURIComponent(this._pares[i][1]));
-    }
-    return out.join("&");
-  };
+  } catch (e) {
+    controller = null;
+  }
+  var headers = Object.assign({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-MX,es;q=0.9,en;q=0.8"
+  }, options.headers || {});
+  var req = { headers, redirect: "follow" };
+  if (signal)
+    req.signal = signal;
+  if (options.method)
+    req.method = options.method;
+  if (options.body)
+    req.body = options.body;
+  return fetch(url, Object.assign({}, options, req));
 }
-if (typeof Promise.any !== "function") {
-  Promise.any = function (lista) {
-    return new Promise(function (resolve, reject) {
-      var items = Array.prototype.slice.call(lista || []);
-      var errores = [];
-      var pendientes = items.length;
-      if (!pendientes) return reject(new Error("All promises were rejected"));
-      items.forEach(function (p, i) {
-        Promise.resolve(p).then(resolve, function (e) {
-          errores[i] = e;
-          if (--pendientes === 0) reject(new Error("All promises were rejected"));
+
+// src/seriesmetro_kl/extractor.js
+var BASE = "https://www3.seriesmetro.net";
+var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+var T = 1e4;
+var HEADERS = {
+  "User-Agent": UA,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "es-MX,es;q=0.9"
+};
+function getText(url, referer, ms) {
+  var h = {};
+  for (var k in HEADERS)
+    h[k] = HEADERS[k];
+  if (referer)
+    h.Referer = referer;
+  return fetchWithTimeout(url, { headers: h }, ms || T).then(function(res) {
+    if (!res.ok)
+      throw new Error("HTTP " + res.status);
+    return res.text();
+  }).catch(function() {
+    return null;
+  });
+}
+function getJson(url) {
+  return getText(url, null, T).then(function(t) {
+    if (!t)
+      return null;
+    try {
+      var d = JSON.parse(t);
+      return d && typeof d === "object" ? d : null;
+    } catch (e) {
+      return null;
+    }
+  });
+}
+var ACENTOS = {
+  "\xE1": "a",
+  "\xE0": "a",
+  "\xE4": "a",
+  "\xE2": "a",
+  "\xE3": "a",
+  "\xE9": "e",
+  "\xE8": "e",
+  "\xEB": "e",
+  "\xEA": "e",
+  "\xED": "i",
+  "\xEC": "i",
+  "\xEF": "i",
+  "\xEE": "i",
+  "\xF3": "o",
+  "\xF2": "o",
+  "\xF6": "o",
+  "\xF4": "o",
+  "\xF5": "o",
+  "\xFA": "u",
+  "\xF9": "u",
+  "\xFC": "u",
+  "\xFB": "u",
+  "\xF1": "n",
+  "\xE7": "c",
+  "\xC1": "a",
+  "\xC0": "a",
+  "\xC4": "a",
+  "\xC2": "a",
+  "\xC3": "a",
+  "\xC9": "e",
+  "\xC8": "e",
+  "\xCB": "e",
+  "\xCA": "e",
+  "\xCD": "i",
+  "\xCC": "i",
+  "\xCF": "i",
+  "\xCE": "i",
+  "\xD3": "o",
+  "\xD2": "o",
+  "\xD6": "o",
+  "\xD4": "o",
+  "\xD5": "o",
+  "\xDA": "u",
+  "\xD9": "u",
+  "\xDC": "u",
+  "\xDB": "u",
+  "\xD1": "n",
+  "\xC7": "c"
+};
+function slugify(s) {
+  s = String(s || "").toLowerCase().replace(/&/g, "y");
+  var out = "";
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charAt(i);
+    out += ACENTOS[c] || c;
+  }
+  return out.replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function tmdbTitles(tmdbId, type) {
+  var langs = ["es-ES", "es-MX", "en-US"];
+  var out = [];
+  var chain = Promise.resolve();
+  langs.forEach(function(lg) {
+    chain = chain.then(function() {
+      var url = "https://api.themoviedb.org/3/" + type + "/" + tmdbId + "?api_key=" + TMDB_KEY + "&language=" + lg;
+      return getJson(url).then(function(d) {
+        if (!d)
+          return;
+        var t = type === "movie" ? d.title : d.name;
+        var o = type === "movie" ? d.original_title : d.original_name;
+        [t, o].forEach(function(x) {
+          if (x && !/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(x) && out.indexOf(x) === -1)
+            out.push(x);
         });
       });
     });
-  };
-}
-
-var $ = Object.defineProperty, _ = Object.defineProperties, F = Object.getOwnPropertyDescriptor, P = Object.getOwnPropertyDescriptors, C = Object.getOwnPropertyNames, A = Object.getOwnPropertySymbols;
-var R = Object.prototype.hasOwnProperty, N = Object.prototype.propertyIsEnumerable;
-var U = (n, t, e) => t in n ? $(n, t, { enumerable: true, configurable: true, writable: true, value: e }) : n[t] = e, m = (n, t) => {
-  for (var e in t || (t = {}))
-    R.call(t, e) && U(n, e, t[e]);
-  if (A)
-    for (var e of A(t))
-      N.call(t, e) && U(n, e, t[e]);
-  return n;
-}, x = (n, t) => _(n, P(t));
-var W = (n, t) => {
-  for (var e in t)
-    $(n, e, { get: t[e], enumerable: true });
-}, D = (n, t, e, r) => {
-  if (t && typeof t == "object" || typeof t == "function")
-    for (let o of C(t))
-      !R.call(n, o) && o !== e && $(n, o, { get: () => t[o], enumerable: !(r = F(t, o)) || r.enumerable });
-  return n;
-};
-var q = (n) => D($({}, "__esModule", { value: true }), n);
-var p = (n, t, e) => new Promise((r, o) => {
-  var a = (i) => {
-    try {
-      c(e.next(i));
-    } catch (u) {
-      o(u);
-    }
-  }, s = (i) => {
-    try {
-      c(e.throw(i));
-    } catch (u) {
-      o(u);
-    }
-  }, c = (i) => i.done ? r(i.value) : Promise.resolve(i.value).then(a, s);
-  c((e = e.apply(n, t)).next());
-});
-var V = {};
-W(V, { getStreams: () => J });
-module.exports = q(V);
-var z = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-function K(n, t) {
-  return n >= 3840 || t >= 2160 ? "4K" : n >= 1920 || t >= 1080 ? "1080p" : n >= 1280 || t >= 720 ? "720p" : n >= 854 || t >= 480 ? "480p" : "360p";
-}
-function k(e) {
-  return p(this, arguments, function* (n, t = {}) {
-    try {
-      let o = yield (yield fetch(n, { headers: m({ "User-Agent": z }, t), redirect: "follow" })).text();
-      if (!o.includes("#EXT-X-STREAM-INF")) {
-        let c = n.match(/[_-](\d{3,4})p/);
-        return c ? `${c[1]}p` : "Unknown";
-      }
-      let a = 0, s = 0;
-      for (let c of o.split(`
-`)) {
-        let i = c.match(/RESOLUTION=(\d+)x(\d+)/);
-        if (i) {
-          let u = parseInt(i[2]);
-          u > s && (s = u, a = parseInt(i[1]));
-        }
-      }
-      return s > 0 ? K(a, s) : "Unknown";
-    } catch (r) {
-      return "Unknown";
-    }
+  });
+  return chain.then(function() {
+    return out;
   });
 }
-var M = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-function O(n) {
-  let t = n.match(/eval\(function\(p,a,c,k,e,d\)\{.*?\}\('([\s\S]*?)',(\d+),(\d+),'([\s\S]*?)'\.split\('\|'\)\)\)/);
+function findFicha(titles, type) {
+  var kind = type === "movie" ? "pelicula" : "serie";
+  var slugs = [];
+  var seen = {};
+  titles.forEach(function(t) {
+    var s = slugify(t);
+    if (s && !seen[s]) {
+      seen[s] = true;
+      slugs.push(s);
+    }
+  });
+  var chain = Promise.resolve(null);
+  slugs.forEach(function(slug) {
+    chain = chain.then(function(found) {
+      if (found)
+        return found;
+      var url = BASE + "/" + kind + "/" + slug + "/";
+      return getText(url, BASE + "/", T).then(function(html) {
+        if (html && (html.indexOf("trembed=") !== -1 || html.indexOf("data-post=") !== -1)) {
+          return { url, html };
+        }
+        return null;
+      });
+    });
+  });
+  return chain;
+}
+function episodeUrl(fichaUrl, fichaHtml, season, episode) {
+  var m = fichaHtml.match(/data-post="(\d+)"/);
+  if (!m)
+    return Promise.resolve(null);
+  var body = "action=action_select_season&post=" + encodeURIComponent(m[1]) + "&season=" + encodeURIComponent(String(season));
+  return fetchWithTimeout(BASE + "/wp-admin/admin-ajax.php", {
+    headers: {
+      "User-Agent": UA,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Referer: fichaUrl
+    },
+    method: "POST",
+    body
+  }, T).then(function(res) {
+    return res.ok ? res.text() : null;
+  }).then(function(html) {
+    if (!html)
+      return null;
+    var re = /href="([^"]+\/capitulo\/[^"]+)"/g;
+    var mm;
+    while ((mm = re.exec(html)) !== null) {
+      var f = mm[1].match(/temporada-(\d+)-capitulo-(\d+)/i);
+      if (f && parseInt(f[1], 10) === parseInt(season, 10) && parseInt(f[2], 10) === parseInt(episode, 10)) {
+        var u = mm[1];
+        return u.indexOf("http") === 0 ? u : BASE + u;
+      }
+    }
+    return null;
+  }).catch(function() {
+    return null;
+  });
+}
+function unpack(html) {
+  var t = html.match(/eval\(function\(p,a,c,k,e,d\)\{.*?\}\('([\s\S]*?)',(\d+),(\d+),'([\s\S]*?)'\.split\('\|'\)\)\)/);
   if (!t)
     return null;
-  let [, e, r, o, a] = t;
-  for (r = parseInt(r), o = parseInt(o), a = a.split("|"); o--; )
-    a[o] && (e = e.replace(new RegExp("\\b" + o.toString(r) + "\\b", "g"), a[o]));
+  var e = t[1], radix = parseInt(t[2], 10), count = parseInt(t[3], 10), words = t[4].split("|");
+  function tok(n) {
+    if (n === 0)
+      return "0";
+    var s = "";
+    while (n > 0) {
+      s = "0123456789abcdefghijklmnopqrstuvwxyz"[n % radix] + s;
+      n = Math.floor(n / radix);
+    }
+    return s;
+  }
+  for (var o = count - 1; o >= 0; o--) {
+    if (words[o])
+      e = e.split(new RegExp("\\b" + tok(o) + "\\b", "g")).join(words[o]);
+  }
   return e;
 }
-function L(n) {
-  return p(this, null, function* () {
-    var t;
-    try {
-      let r = yield (yield fetch(n, { headers: { "User-Agent": M, Referer: "https://www3.seriesmetro.net/" }, redirect: "follow" })).text(), o = O(r);
-      if (!o)
-        return null;
-      let a = (t = o.match(/file:"(https?:\/\/[^"]+\.m3u8[^"]*)"/)) == null ? void 0 : t[1];
-      if (!a)
-        return null;
-      let s = yield k(a, { Referer: "https://fastream.to/", "User-Agent": M });
-      return { url: a, quality: s, headers: { "User-Agent": M, Referer: "https://fastream.to/", Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "es-ES,es;q=0.9,en;q=0.8" } };
-    } catch (e) {
-      return console.error("[Fastream] Error:", e), null;
+var LANG_ORDER = ["latino", "lat", "castellano", "espa\xF1ol", "esp", "vose", "sub", "subtitulado"];
+var LANG_LABEL = {
+  latino: "Latino",
+  lat: "Latino",
+  castellano: "Espa\xF1ol",
+  "espa\xF1ol": "Espa\xF1ol",
+  esp: "Espa\xF1ol",
+  vose: "Subtitulado",
+  sub: "Subtitulado",
+  subtitulado: "Subtitulado"
+};
+function langRank(label) {
+  var l = String(label || "").toLowerCase();
+  for (var i = 0; i < LANG_ORDER.length; i++) {
+    if (l.indexOf(LANG_ORDER[i]) !== -1)
+      return i;
+  }
+  return 99;
+}
+function langLabel(label) {
+  var l = String(label || "").toLowerCase();
+  for (var k in LANG_LABEL) {
+    if (l.indexOf(k) !== -1)
+      return LANG_LABEL[k];
+  }
+  return "Latino";
+}
+function fileFromEmbed(embedUrl, referer, reintento) {
+  var h = { "User-Agent": UA };
+  if (referer)
+    h.Referer = referer;
+  var p;
+  try {
+    if (typeof AbortController !== "undefined" && typeof setTimeout !== "undefined") {
+      var c = new AbortController();
+      setTimeout(function() {
+        try {
+          c.abort();
+        } catch (e) {
+        }
+      }, T);
+      p = fetch(embedUrl, { headers: h, redirect: "follow", signal: c.signal });
+    } else {
+      p = fetch(embedUrl, { headers: h, redirect: "follow" });
     }
-  });
-}
-var B = "439c478a771f35c05022f9feabcca01c", v = "https://www3.seriesmetro.net", G = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", E = { "User-Agent": G, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "es-MX,es;q=0.9", Connection: "keep-alive", "Upgrade-Insecure-Requests": "1" }, I = ["latino", "lat", "castellano", "espa\xF1ol", "esp", "vose", "sub", "subtitulado"], H = { latino: "Latino", lat: "Latino", castellano: "Espa\xF1ol", espa\u00F1ol: "Espa\xF1ol", esp: "Espa\xF1ol", vose: "Subtitulado", sub: "Subtitulado", subtitulado: "Subtitulado" };
-function b(n) {
-  return n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "y").replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-}
-function Q(n, t) {
-  return p(this, null, function* () {
-    let [e, r, o] = yield Promise.all(["es-ES", "es-MX", "en-US"].map((l) => fetch(`https://api.themoviedb.org/3/${t}/${n}?api_key=${B}&language=${l}`).then((d) => d.json()).catch(() => null))), a = e ? t === "movie" ? e.title : e.name : null, s = r && !/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(t === "movie" ? r.title : r.name) ? r : o;
-    if (!s)
+  } catch (e) {
+    return Promise.resolve(null);
+  }
+  return p.then(function(res) {
+    if (!res.ok)
+      throw new Error("HTTP " + res.status);
+    return res.text();
+  }).catch(function() {
+    return null;
+  }).then(function(html) {
+    var up = unpack(html);
+    if (!up)
       return null;
-    let c = t === "movie" ? s.title : s.name, i = t === "movie" ? s.original_title : s.original_name;
-    return console.log(`[SeriesMetro] TMDB (${s === r ? "Latino" : "Ingl\xE9s"}): "${c}"`), { title: c, originalTitle: i, titleEs: a };
-  });
-}
-function X(n, t) {
-  return p(this, null, function* () {
-    let { title: e, originalTitle: r, titleEs: o } = n, a = t === "movie" ? "pelicula" : "serie", s = [];
-    e && s.push(b(e)), r && r !== e && s.push(b(r)), o && o !== e && s.push(b(o));
-    try {
-      return yield Promise.any(s.map((c) => p(this, null, function* () {
-        let i = `${v}/${a}/${c}/`, u = yield fetch(i, { headers: E }).then((l) => l.text());
-        if (!u.includes("trembed=") && !u.includes("data-post="))
-          throw new Error("not found");
-        return console.log(`[SeriesMetro] \u2713 Encontrado: /${a}/${c}/`), { url: i, html: u };
-      })));
-    } catch (c) {
-      return console.log("[SeriesMetro] No encontrado por slug"), null;
+    var m = up.match(/file:"(https?:\/\/[^"]+\.m3u8[^"]*)"/);
+    if (!m)
+      return null;
+    var url = m[1];
+    if (/[?&]t=-/.test(url) && !reintento) {
+      return fileFromEmbed(embedUrl, referer, true);
     }
+    return url;
   });
 }
-function Y(n, t, e, r) {
-  return p(this, null, function* () {
-    var a;
-    let o = (a = t.match(/data-post="(\d+)"/)) == null ? void 0 : a[1];
-    if (!o)
-      return console.log("[SeriesMetro] No se encontr\xF3 data-post"), null;
-    try {
-      let s = new URLSearchParams({ action: "action_select_season", post: o, season: String(e) }), l = [...(yield (yield fetch(`${v}/wp-admin/admin-ajax.php`, { method: "POST", headers: x(m({}, E), { "Content-Type": "application/x-www-form-urlencoded", Referer: n }), body: s.toString() })).text()).matchAll(/href="([^"]+\/capitulo\/[^"]+)"/g)].map((d) => d[1]).find((d) => {
-        let f = d.match(/temporada-(\d+)-capitulo-(\d+)/i);
-        return f && parseInt(f[1]) === parseInt(e) && parseInt(f[2]) === parseInt(r);
+function extractFromPage(pageUrl) {
+  return getText(pageUrl, pageUrl, T).then(function(html) {
+    if (!html)
+      return [];
+    var optRe = /href="#options-(\d+)"[^>]*>[\s\S]*?<span class="server">([\s\S]*?)<\/span>/g;
+    var trRe = /\?trembed=(\d+)(?:&#038;|&)trid=(\d+)(?:&#038;|&)trtype=(\d+)/g;
+    var opts = [], tm, om;
+    while ((om = optRe.exec(html)) !== null) {
+      opts.push({ n: om[1], label: om[2].replace(/<[^>]+>/g, "").trim() });
+    }
+    var tr = null;
+    while ((tm = trRe.exec(html)) !== null) {
+      tr = tm;
+      break;
+    }
+    if (!opts.length || !tr)
+      return [];
+    var trid = tr[2], trtype = tr[3];
+    opts.sort(function(a, b) {
+      return langRank(a.label) - langRank(b.label);
+    });
+    var streams = [];
+    var chain = Promise.resolve();
+    var terminado = false;
+    opts.forEach(function(op) {
+      chain = chain.then(function() {
+        if (terminado || streams.length >= 3)
+          return null;
+        var tUrl = BASE + "/?trembed=" + op.n + "&trid=" + trid + "&trtype=" + trtype;
+        return getText(tUrl, pageUrl, T).then(function(th) {
+          if (!th)
+            return null;
+          var im = th.match(/<iframe[^>]*src="(https?:\/\/fastream\.to\/[^"]+)"/i);
+          if (!im)
+            return null;
+          return fileFromEmbed(im[1], pageUrl, false).then(function(file) {
+            if (!file)
+              return null;
+            var label = langLabel(op.label);
+            streams.push({
+              title: "SeriesMetro \xB7 " + label + " \xB7 Fastream",
+              quality: "HD",
+              language: label,
+              url: file,
+              // OJO: fastream.to invalida el token si la peticion del m3u8 trae
+              // Accept: text/html (solo User-Agent + Referer pasan). Por eso
+              // estos headers son minimos: la validacion los reutiliza tal cual.
+              headers: {
+                "User-Agent": UA,
+                Referer: "https://fastream.to/"
+              }
+            });
+            if (label === "Latino")
+              terminado = true;
+            return null;
+          });
+        });
       });
-      return l ? (console.log(`[SeriesMetro] \u2713 Episodio S${e}E${r} encontrado: ${l}`), l) : (console.log(`[SeriesMetro] Episodio S${e}E${r} no encontrado`), null);
-    } catch (s) {
-      return console.log(`[SeriesMetro] Error getEpisodeUrl: ${s.message}`), null;
-    }
+    });
+    return chain.then(function() {
+      return streams;
+    });
   });
 }
-function j(n, t) {
-  return p(this, null, function* () {
-    var u;
-    let e = yield fetch(n, { headers: x(m({}, E), { Referer: t }) }).then((l) => l.text()), r = [...e.matchAll(/href="#options-(\d+)"[^>]*>[\s\S]*?<span class="server">([\s\S]*?)<\/span>/g)], o = [...e.matchAll(/\?trembed=(\d+)(?:&#038;|&)trid=(\d+)(?:&#038;|&)trtype=(\d+)/g)];
-    if (o.length === 0 || r.length === 0)
+function extractStreams(tmdbId, mediaType, season, episode) {
+  var id = parseInt(tmdbId, 10);
+  if (!id || id <= 0)
+    return Promise.resolve([]);
+  var tipo = String(mediaType || "").toLowerCase();
+  if (tipo === "series" || tipo === "anime")
+    tipo = "tv";
+  if (tipo !== "movie" && tipo !== "tv")
+    tipo = "movie";
+  var s = parseInt(season, 10) || 1;
+  var e = parseInt(episode, 10) || 1;
+  return tmdbTitles(id, tipo).then(function(titles) {
+    if (!titles.length)
       return [];
-    let a = o[0][2], s = o[0][3], c = r.sort(([, , l], [, , d]) => {
-      let f = l.replace(/<[^>]+>/g, "").split("-").pop().trim().toLowerCase(), S = d.replace(/<[^>]+>/g, "").split("-").pop().trim().toLowerCase(), h = I.indexOf(f), g = I.indexOf(S);
-      return (h === -1 ? 99 : h) - (g === -1 ? 99 : g);
-    }), i = [];
-    for (let [, l, d] of c) {
-      let S = d.replace(/<[^>]+>/g, "").trim().split("-").pop().trim().toLowerCase(), h = H[S] || S;
-      try {
-        let y = (u = (yield fetch(`${v}/?trembed=${l}&trid=${a}&trtype=${s}`, { headers: x(m({}, E), { Referer: n }) }).then((T) => T.text())).match(/<iframe[^>]*src="(https?:\/\/fastream\.to\/[^"]+)"/i)) == null ? void 0 : u[1];
-        if (!y)
-          continue;
-        let w = yield L(y);
-        if (!w)
-          continue;
-        if (i.push({ name: "SeriesMetro", title: `${w.quality} \xB7 ${h} \xB7 Fastream`, url: w.url, quality: w.quality, language: h, headers: w.headers }), h === "Latino")
-          return console.log("[SeriesMetro] Latino encontrado, retornando"), i;
-      } catch (g) {
-        console.log(`[SeriesMetro] Error embed ${l}: ${g.message}`);
+    return findFicha(titles, tipo);
+  }).then(function(ficha) {
+    if (!ficha)
+      return [];
+    if (tipo !== "tv")
+      return extractFromPage(ficha.url);
+    return episodeUrl(ficha.url, ficha.html, s, e).then(function(epUrl) {
+      if (!epUrl)
+        return [];
+      return extractFromPage(epUrl);
+    });
+  }).catch(function() {
+    return [];
+  });
+}
+
+// src/shared/validate.js
+var VALIDATE_TIMEOUT_MS = 7e3;
+var VALIDATE_CONCURRENCY = 4;
+function qualityRank(q) {
+  if (!q)
+    return 0;
+  var s = String(q).toLowerCase();
+  if (s.indexOf("4k") !== -1 || s.indexOf("2160") !== -1)
+    return 2160;
+  var m = s.match(/(\d{3,4})\s*p/);
+  if (m)
+    return parseInt(m[1], 10);
+  return 0;
+}
+function isM3u8(url) {
+  return /\.m3u8(\?|#|$)/i.test(url || "");
+}
+function hasVideoExtension(url) {
+  return /\.(mp4|m3u8|mkv|webm|ts|m4v|mov)(\?|#|$)/i.test(url || "");
+}
+function isVideoResponse(contentType, url) {
+  var ct = "";
+  try {
+    ct = String(contentType || "").toLowerCase().split(";")[0].trim();
+  } catch (e) {
+    ct = "";
+  }
+  if (ct.indexOf("video/") === 0)
+    return true;
+  if (ct === "application/vnd.apple.mpegurl" || ct === "application/x-mpegurl")
+    return true;
+  if (ct === "application/octet-stream" || ct === "binary/octet-stream") {
+    return hasVideoExtension(url);
+  }
+  if (!ct) {
+    return hasVideoExtension(url);
+  }
+  return false;
+}
+function getContentType(res) {
+  try {
+    if (res && res.headers && typeof res.headers.get === "function") {
+      return res.headers.get("content-type");
+    }
+  } catch (e) {
+  }
+  return "";
+}
+function checkUrl(url, headers, timeoutMs) {
+  return new Promise(function(resolve) {
+    var done = false;
+    var timer = null;
+    var controller = null;
+    function finish(ok) {
+      if (done)
+        return;
+      done = true;
+      if (timer) {
+        try {
+          clearTimeout(timer);
+        } catch (e) {
+        }
+        timer = null;
+      }
+      if (controller) {
+        try {
+          controller.abort();
+        } catch (e) {
+        }
+      }
+      resolve(!!ok);
+    }
+    if (!url || typeof url !== "string" || url.indexOf("http") !== 0) {
+      resolve(false);
+      return;
+    }
+    if (typeof setTimeout !== "undefined") {
+      timer = setTimeout(function() {
+        timer = null;
+        finish(false);
+      }, timeoutMs || VALIDATE_TIMEOUT_MS);
+    }
+    var reqHeaders = {
+      "Range": "bytes=0-2047",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    };
+    if (headers) {
+      for (var k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k) && headers[k]) {
+          reqHeaders[k] = headers[k];
+        }
       }
     }
-    return i;
-  });
-}
-function J(n, t, e, r) {
-  return p(this, null, function* () {
-    if (!n || !t)
-      return [];
-    if (t === "series" || t === "anime") t = "tv";
-    let o = Date.now();
-    console.log(`[SeriesMetro] Buscando: TMDB ${n} (${t})${e ? ` S${e}E${r}` : ""}`);
+    var reqInit = { headers: reqHeaders, redirect: "follow" };
     try {
-      let a = yield Q(n, t);
-      if (!a)
-        return [];
-      let s = yield X(a, t);
-      if (!s)
-        return [];
-      let c = s.url;
-      if (t === "tv" && e && r) {
-        let l = yield Y(s.url, s.html, e, r);
-        if (!l)
-          return console.log(`[SeriesMetro] Episodio S${e}E${r} no encontrado`), [];
-        console.log(`[SeriesMetro] Episodio: ${l}`), c = l;
+      if (typeof AbortController !== "undefined") {
+        controller = new AbortController();
+        reqInit.signal = controller.signal;
       }
-      let i = yield j(c, c), u = ((Date.now() - o) / 1e3).toFixed(2);
-      return console.log(`[SeriesMetro] \u2713 ${i.length} streams en ${u}s`), i;
-    } catch (a) {
-      return console.log(`[SeriesMetro] Error: ${a.message}`), [];
+    } catch (e) {
+      controller = null;
     }
+    fetch(url, reqInit).then(function(res) {
+      var status = res.status;
+      if (status === 200 || status === 206 || status === 416) {
+        if (isM3u8(url)) {
+          res.text().then(function(t) {
+            finish(t && t.indexOf("#EXTM3U") !== -1);
+          }).catch(function() {
+            finish(true);
+          });
+        } else if (status === 416) {
+          finish(true);
+        } else if (!isVideoResponse(getContentType(res), url)) {
+          try {
+            if (controller)
+              controller.abort();
+          } catch (e) {
+          }
+          finish(false);
+        } else {
+          finish(true);
+        }
+      } else {
+        finish(false);
+      }
+    }).catch(function() {
+      finish(false);
+    });
   });
 }
+function filterWorkingStreams(streams, opts) {
+  opts = opts || {};
+  var timeout = opts.timeoutMs || VALIDATE_TIMEOUT_MS;
+  var concurrency = opts.concurrency || VALIDATE_CONCURRENCY;
+  var seen = {};
+  var uniq = [];
+  (streams || []).forEach(function(s) {
+    if (!s || !s.url || seen[s.url])
+      return;
+    seen[s.url] = 1;
+    uniq.push(s);
+  });
+  if (uniq.length === 0)
+    return Promise.resolve([]);
+  var results = new Array(uniq.length);
+  var cursor = 0;
+  function worker() {
+    if (cursor >= uniq.length)
+      return Promise.resolve();
+    var i = cursor++;
+    var st = uniq[i];
+    return checkUrl(st.url, st.headers, timeout).then(function(ok) {
+      results[i] = ok ? st : null;
+    }).catch(function() {
+      results[i] = null;
+    }).then(worker);
+  }
+  var workers = [];
+  var n = Math.min(concurrency, uniq.length);
+  for (var w = 0; w < n; w++)
+    workers.push(worker());
+  return Promise.all(workers).then(function() {
+    var alive = [];
+    for (var i = 0; i < results.length; i++) {
+      if (results[i])
+        alive.push(results[i]);
+    }
+    alive.sort(function(a, b) {
+      return qualityRank(b.quality) - qualityRank(a.quality);
+    });
+    return alive;
+  }).catch(function() {
+    return [];
+  });
+}
+function withWorkingStreams(extractPromise) {
+  return Promise.resolve(extractPromise).then(function(streams) {
+    return filterWorkingStreams(streams);
+  }).catch(function() {
+    return [];
+  });
+}
+
+// src/seriesmetro_kl/index.js
+function withTimeout(promise, ms) {
+  if (typeof setTimeout === "undefined")
+    return promise;
+  return Promise.race([
+    promise,
+    new Promise(function(res) {
+      setTimeout(function() {
+        res([]);
+      }, ms);
+    })
+  ]);
+}
+function getStreams(tmdbId, mediaType, season, episode) {
+  return withWorkingStreams(withTimeout(
+    extractStreams(tmdbId, mediaType, season, episode).catch(function() {
+      return [];
+    }),
+    4e4
+  ));
+}
+module.exports = { getStreams };
