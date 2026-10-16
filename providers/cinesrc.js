@@ -63,11 +63,36 @@ var __msValidate = (function () {
       }).catch(function () { finish(false); });
     });
   }
+  
+// Filtro de idioma: solo Latino y Subtitulado. Nada de espanol de Espana.
+// Sin idioma (vacio, Desconocido, Multi) -> PASA.
+function isAllowedLanguage(lang) {
+  if (lang === null || lang === undefined) return true;
+  var s = String(lang).toLowerCase().trim();
+  if (!s) return true;
+  try {
+    s = s.replace(/[\u00e1\u00e0\u00e4\u00e2]/g, 'a').replace(/[\u00e9\u00e8\u00eb\u00ea]/g, 'e').replace(/[\u00ed\u00ec\u00ef\u00ee]/g, 'i')
+      .replace(/[\u00f3\u00f2\u00f6\u00f4]/g, 'o').replace(/[\u00fa\u00f9\u00fc\u00fb]/g, 'u').replace(/\u00f1/g, 'n');
+  } catch (e) {}
+  if (s === 'desconocido' || s === 'unknown' || s === 'multi' || s === 'n/a' || s === '-') return true;
+  if (s.indexOf('latino') !== -1 || s.indexOf('lat') !== -1 || s.indexOf('es_mx') !== -1 ||
+      s.indexOf('es-mx') !== -1 || s.indexOf('es-la') !== -1 || s.indexOf('es_la') !== -1 ||
+      s === 'mx' || s.indexOf('mx') !== -1) return true;
+  if (s.indexOf('sub') !== -1 || s.indexOf('vose') !== -1) return true;
+  if (s === 'en' || s === 'eng' || s.indexOf('english') !== -1 || s.indexOf('ingles') !== -1 ||
+      s.indexOf('en-') === 0 || s.indexOf('en_') === 0 || s.indexOf('en ') === 0 ||
+      s.indexOf(' en') !== -1) return true;
+  if (s === 'ja' || s === 'jp' || s === 'jpn' || s.indexOf('japanese') !== -1 ||
+      s.indexOf('japones') !== -1 || s.indexOf('ja-') === 0 || s.indexOf('ja_') === 0 ||
+      s.indexOf('jp-') === 0 || s.indexOf('jp_') === 0) return true;
+  return false;
+}
+
   function filterWorkingStreams(streams, opts) {
     opts = opts || {};
     var timeout = opts.timeoutMs || TIMEOUT_MS, concurrency = opts.concurrency || CONCURRENCY;
     var seen = {}, uniq = [];
-    (streams || []).forEach(function (s) { if (!s || !s.url || seen[s.url]) return; seen[s.url] = 1; uniq.push(s); });
+    (streams || []).forEach(function (s) { if (!s || !s.url || seen[s.url] || !isAllowedLanguage(s.language)) return; seen[s.url] = 1; uniq.push(s); });
     if (uniq.length === 0) return Promise.resolve([]);
     var results = new Array(uniq.length), cursor = 0;
     function worker() {

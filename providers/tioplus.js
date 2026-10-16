@@ -1,6 +1,6 @@
 /**
  * tioplus - Built from src/tioplus/
- * Generated: 2026-10-07T23:02:30.903Z
+ * Generated: 2026-10-16T23:40:42.656Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -6857,6 +6857,28 @@ function extractStreams(tmdbId, mediaType, season, episode) {
 // src/shared/validate.js
 var VALIDATE_TIMEOUT_MS = 7e3;
 var VALIDATE_CONCURRENCY = 4;
+function isAllowedLanguage(lang) {
+  if (lang === null || lang === void 0)
+    return true;
+  var s = String(lang).toLowerCase().trim();
+  if (!s)
+    return true;
+  try {
+    s = s.replace(/[áàäâ]/g, "a").replace(/[éèëê]/g, "e").replace(/[íìïî]/g, "i").replace(/[óòöô]/g, "o").replace(/[úùüû]/g, "u").replace(/ñ/g, "n");
+  } catch (e) {
+  }
+  if (s === "desconocido" || s === "unknown" || s === "multi" || s === "n/a" || s === "-")
+    return true;
+  if (s.indexOf("latino") !== -1 || s.indexOf("lat") !== -1 || s.indexOf("es_mx") !== -1 || s.indexOf("es-mx") !== -1 || s.indexOf("es-la") !== -1 || s.indexOf("es_la") !== -1 || s === "mx" || s.indexOf("mx") !== -1)
+    return true;
+  if (s.indexOf("sub") !== -1 || s.indexOf("vose") !== -1)
+    return true;
+  if (s === "en" || s === "eng" || s.indexOf("english") !== -1 || s.indexOf("ingles") !== -1 || s.indexOf("en-") === 0 || s.indexOf("en_") === 0 || s.indexOf("en ") === 0 || s.indexOf(" en") !== -1)
+    return true;
+  if (s === "ja" || s === "jp" || s === "jpn" || s.indexOf("japanese") !== -1 || s.indexOf("japones") !== -1 || s.indexOf("ja-") === 0 || s.indexOf("ja_") === 0 || s.indexOf("jp-") === 0 || s.indexOf("jp_") === 0)
+    return true;
+  return false;
+}
 function qualityRank(q) {
   if (!q)
     return 0;
@@ -6993,6 +7015,8 @@ function filterWorkingStreams(streams, opts) {
   var uniq = [];
   (streams || []).forEach(function(s) {
     if (!s || !s.url || seen[s.url])
+      return;
+    if (!isAllowedLanguage(s.language))
       return;
     seen[s.url] = 1;
     uniq.push(s);

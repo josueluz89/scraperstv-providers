@@ -26,6 +26,50 @@
 var VALIDATE_TIMEOUT_MS = 7000;
 var VALIDATE_CONCURRENCY = 4;
 
+// ── Filtro de idioma: Latino, SUB, Inglés y Japonés ───────────────────────
+// El usuario solo quiere español LATINO, SUBTITULADO, INGLÉS (contenido en
+// inglés subtitulado) y JAPONÉS (anime subtitulado). Nada de español de
+// España (castellano / es_ES / Español). Se aplica en filterWorkingStreams
+// para que cubra a TODOS los providers sin tocar cada uno.
+//
+// Reglas:
+// - Sin idioma (vacío, null, undefined, "Desconocido", "Multi") -> PASA.
+//   Mejor dejar pasar que descartar links válidos sin idioma marcado.
+// - Latino (latino, lat, es_MX, es-MX, es-LA, mx) -> PASA.
+// - Subtitulado (sub, subtitulado, vose) -> PASA.
+// - Inglés (english, ingles, en, eng) -> PASA.
+// - Japonés (japanese, japones, ja, jp, jpn) -> PASA.
+// - Todo lo demás (castellano, es_ES, Español, French, etc.) -> SE DESCARTA.
+function isAllowedLanguage(lang) {
+  if (lang === null || lang === undefined) return true;
+  var s = String(lang).toLowerCase().trim();
+  if (!s) return true;
+  // Normalizar: quitar acentos para comparar.
+  try {
+    s = s.replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n');
+  } catch (e) {}
+  // Sin idioma determinable -> pasa.
+  if (s === 'desconocido' || s === 'unknown' || s === 'multi' || s === 'n/a' || s === '-') return true;
+  // Latino -> pasa.
+  if (s.indexOf('latino') !== -1 || s.indexOf('lat') !== -1 || s.indexOf('es_mx') !== -1 ||
+      s.indexOf('es-mx') !== -1 || s.indexOf('es-la') !== -1 || s.indexOf('es_la') !== -1 ||
+      s === 'mx' || s.indexOf('mx') !== -1) return true;
+  // Subtitulado -> pasa.
+  if (s.indexOf('sub') !== -1 || s.indexOf('vose') !== -1) return true;
+  // Inglés -> pasa (contenido en inglés subtitulado).
+  // Ojo: no basta con 'en' suelto (aparece en 'french'); exigir palabra completa o prefijo con separador.
+  if (s === 'en' || s === 'eng' || s.indexOf('english') !== -1 || s.indexOf('ingles') !== -1 ||
+      s.indexOf('en-') === 0 || s.indexOf('en_') === 0 || s.indexOf('en ') === 0 ||
+      s.indexOf(' en') !== -1) return true;
+  // Japonés -> pasa (anime subtitulado).
+  if (s === 'ja' || s === 'jp' || s === 'jpn' || s.indexOf('japanese') !== -1 ||
+      s.indexOf('japones') !== -1 || s.indexOf('ja-') === 0 || s.indexOf('ja_') === 0 ||
+      s.indexOf('jp-') === 0 || s.indexOf('jp_') === 0) return true;
+  // Todo lo demás (castellano, es_ES, Español, French, etc.) -> no pasa.
+  return false;
+}
+
 function qualityRank(q) {
   if (!q) return 0;
   var s = String(q).toLowerCase();
@@ -171,6 +215,8 @@ function filterWorkingStreams(streams, opts) {
   var uniq = [];
   (streams || []).forEach(function (s) {
     if (!s || !s.url || seen[s.url]) return;
+    // Filtro de idioma: Latino, SUB, Inglés y Japonés. Sin idioma -> pasa.
+    if (!isAllowedLanguage(s.language)) return;
     seen[s.url] = 1;
     uniq.push(s);
   });
