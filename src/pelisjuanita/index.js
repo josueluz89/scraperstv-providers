@@ -1,0 +1,32 @@
+import { extraer } from './extractor.js';
+import { withWorkingStreams } from '../shared/validate.js';
+
+// Cap total lookup at 40s (QuickJS/Nuvio has no setTimeout: runs uncapped there,
+// where the app enforces its own 60s limit).
+function withTimeout(promise, ms) {
+  if (typeof setTimeout === 'undefined') return promise;
+  return Promise.race([
+    promise,
+    new Promise(function (res) {
+      setTimeout(function () {
+        res([]);
+      }, ms);
+    }),
+  ]);
+}
+
+/**
+ * Películas, series y novelas en latino desde pelisjuanita.org (API REST).
+ * @param {string} tmdbId
+ * @param {string} mediaType 'movie' | 'series' | 'tv' | 'anime'
+ */
+function getStreams(tmdbId, mediaType, season, episode) {
+  return withWorkingStreams(withTimeout(
+    extraer(tmdbId, mediaType, season, episode).catch(function () {
+      return [];
+    }),
+    40000
+  ));
+}
+
+module.exports = { getStreams };

@@ -1,6 +1,6 @@
 {
   "name": "MasterScrap Providers",
-  "version": "1.15.5",
+  "version": "1.15.6",
   "scrapers": [
     {
       "id": "cinecalidad",
@@ -439,6 +439,13 @@
       "contentLanguage": [
         "es"
       ]
+    },
+    {
+      "id": "pelisjuanita",
+      "name": "PelisJuanita",
+      "version": "1.0.0",
+      "enabled": true,
+      "file": "providers/pelisjuanita.js"
     }
   ]
 }
