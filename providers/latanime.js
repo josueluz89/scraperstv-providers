@@ -1,6 +1,6 @@
 /**
  * latanime - Built from src/latanime/
- * Generated: 2026-10-16T23:40:41.515Z
+ * Generated: 2026-10-22T08:24:49.265Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7696,42 +7696,47 @@ function tituloDeHtml(html) {
 }
 function tmdbTitulos(tmdbId, mediaType) {
   var tipo = mediaType === "movie" ? "movie" : "tv";
-  var base = "https://api.themoviedb.org/3/" + tipo + "/" + tmdbId + "?api_key=" + TMDB_KEY + "&language=";
-  function deRaw(raw) {
-    var t = [];
-    var d = null;
+  var raiz = "https://api.themoviedb.org/3/" + tipo + "/" + tmdbId;
+  function pedir(url) {
+    return fetchText(url).catch(function() {
+      return null;
+    });
+  }
+  function json(raw) {
     try {
-      d = JSON.parse(raw);
+      return raw ? JSON.parse(raw) : null;
     } catch (e) {
-      return t;
+      return null;
     }
-    if (!d)
-      return t;
-    var principal = d.title != null ? d.title : d.name;
-    var original = d.original_title != null ? d.original_title : d.original_name;
-    if (principal)
-      t.push(principal);
-    if (original && original !== principal)
-      t.push(original);
-    return t;
+  }
+  function usable(t) {
+    return typeof t === "string" && !!norm(t) && !/[^\x00-\xFF]/.test(t);
   }
   return Promise.all([
-    fetchText(base + "es-MX").catch(function() {
-      return null;
-    }),
-    fetchText(base + "en-US").catch(function() {
-      return null;
-    })
+    pedir(raiz + "?api_key=" + TMDB_KEY + "&language=es-MX"),
+    pedir(raiz + "?api_key=" + TMDB_KEY + "&language=en-US"),
+    pedir(raiz + "/alternative_titles?api_key=" + TMDB_KEY)
   ]).then(function(raws) {
-    var t = [];
-    for (var i = 0; i < raws.length; i++) {
-      var tt = deRaw(raws[i]);
-      for (var j = 0; j < tt.length; j++) {
-        if (t.indexOf(tt[j]) < 0)
-          t.push(tt[j]);
+    var titulos = [];
+    function agregar(t) {
+      if (usable(t) && titulos.indexOf(t) < 0 && titulos.length < 10)
+        titulos.push(t);
+    }
+    var detalles = [json(raws[0]), json(raws[1])];
+    for (var i = 0; i < detalles.length; i++) {
+      var d = detalles[i];
+      if (!d)
+        continue;
+      agregar(d.title != null ? d.title : d.name);
+      agregar(d.original_title != null ? d.original_title : d.original_name);
+    }
+    var alt = json(raws[2]);
+    if (alt && alt.results) {
+      for (var j = 0; j < alt.results.length; j++) {
+        agregar(alt.results[j] && alt.results[j].title);
       }
     }
-    return t;
+    return titulos;
   }).catch(function() {
     return [];
   });
@@ -7973,6 +7978,14 @@ function extraer(tmdbId, mediaType, season, episode) {
           slugs.push(encontrados[i]);
         }
       }
+      var parciales = elegirCandidato(slugs, titulos, temporada);
+      var fuerte = false;
+      for (var pc = 0; pc < parciales.length; pc++) {
+        if (parciales[pc].titulo >= 0.9)
+          fuerte = true;
+      }
+      if (fuerte)
+        break;
     }
     if (!slugs.length)
       return [];
