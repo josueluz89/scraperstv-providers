@@ -12,7 +12,11 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 // ("Failed to execute pending jobs") y el provider devolvia 0 enlaces. Con 15 s, DOS
 // resoluciones lentas ya agotaban todo. 5 s deja margen para las que responden rapido (el
 // grueso de estos hosts contesta en <1,5 s) y no se come el presupuesto.
-const RESOLVE_TIMEOUT = 5000;
+// CORRECCION 2026-10-22: medido hoy, morencius/vibuxer tardan 4-7 s por
+// pagina de forma habitual; el abort a los 5 s mataba lecturas sanas y la
+// pelicula (6 entradas) devolvia 0 siempre. Se sube a 10 s: las resoluciones
+// van en paralelo y la llamada completa queda por debajo del cap de 40 s.
+const RESOLVE_TIMEOUT = 10000;
 
 var ACCENT_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o' };
 function stripAccents(s) {
