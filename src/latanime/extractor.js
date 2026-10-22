@@ -97,46 +97,56 @@ function tituloDeHtml(html) {
 
 // ── TMDB ───────────────────────────────────────────────────────────────────
 function tmdbTitulos(tmdbId, mediaType) {
+  // Resuelve TODOS los títulos con los que la obra puede estar indexada en
+  // el sitio, en una sola pieza: el localizado (es-MX), el inglés (en-US),
+  // el original y los títulos alternativos en alfabeto latino (romaji,
+  // español...). El sitio indexa muchos anime SOLO por su romaji
+  // ("Shingeki no Kyojin" para TMDB 1429, cuyo detalle solo da
+  // "Attack on Titan" + el original en kanji): sin esos títulos el
+  // scoring no tiene cómo reconocer los slugs y devuelve 0.00.
+  // Solo alfabeto latino (el buscador del sitio no reconoce otro) y
+  // máximo 10 títulos en total, para acotar las búsquedas.
   var tipo = mediaType === 'movie' ? 'movie' : 'tv';
-  var base =
-    'https://api.themoviedb.org/3/' +
-    tipo +
-    '/' +
-    tmdbId +
-    '?api_key=' +
-    TMDB_KEY +
-    '&language=';
-  function deRaw(raw) {
-    var t = [];
-    var d = null;
-    try {
-      d = JSON.parse(raw);
-    } catch (e) {
-      return t;
-    }
-    if (!d) return t;
-    var principal = d.title != null ? d.title : d.name;
-    var original = d.original_title != null ? d.original_title : d.original_name;
-    if (principal) t.push(principal);
-    if (original && original !== principal) t.push(original);
-    return t;
+  var raiz = 'https://api.themoviedb.org/3/' + tipo + '/' + tmdbId;
+  function pedir(url) {
+    return fetchText(url).catch(function () {
+      return null;
+    });
   }
-  // es-MX primero y en-US después: el título en inglés (p. ej. "Saint Seiya")
-  // suele ser el que el buscador del sitio reconoce cuando el título
-  // localizado ("Los Caballeros del Zodiaco") no devuelve la serie clásica.
+  function json(raw) {
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function usable(t) {
+    return typeof t === 'string' && !!norm(t) && !/[^\x00-\xFF]/.test(t);
+  }
   return Promise.all([
-    fetchText(base + 'es-MX').catch(function () { return null; }),
-    fetchText(base + 'en-US').catch(function () { return null; }),
+    pedir(raiz + '?api_key=' + TMDB_KEY + '&language=es-MX'),
+    pedir(raiz + '?api_key=' + TMDB_KEY + '&language=en-US'),
+    pedir(raiz + '/alternative_titles?api_key=' + TMDB_KEY),
   ])
     .then(function (raws) {
-      var t = [];
-      for (var i = 0; i < raws.length; i++) {
-        var tt = deRaw(raws[i]);
-        for (var j = 0; j < tt.length; j++) {
-          if (t.indexOf(tt[j]) < 0) t.push(tt[j]);
+      var titulos = [];
+      function agregar(t) {
+        if (usable(t) && titulos.indexOf(t) < 0 && titulos.length < 10) titulos.push(t);
+      }
+      var detalles = [json(raws[0]), json(raws[1])];
+      for (var i = 0; i < detalles.length; i++) {
+        var d = detalles[i];
+        if (!d) continue;
+        agregar(d.title != null ? d.title : d.name);
+        agregar(d.original_title != null ? d.original_title : d.original_name);
+      }
+      var alt = json(raws[2]);
+      if (alt && alt.results) {
+        for (var j = 0; j < alt.results.length; j++) {
+          agregar(alt.results[j] && alt.results[j].title);
         }
       }
-      return t;
+      return titulos;
     })
     .catch(function () {
       return [];
@@ -403,8 +413,11 @@ async function extraer(tmdbId, mediaType, season, episode) {
 
   var slugs = [];
   var vistos = {};
-  // sin corte anticipado: todas las frases se prueban y el scoring
-  // (puntuar + elegirCandidato) descarta el ruido
+  // Se busca título por título y se corta en cuanto ya hay un candidato
+  // fuerte (scoring de título >= 0.9): seguir buscando solo quema el
+  // presupuesto de tiempo del provider sin cambiar el elegido. Si
+  // ningún título produce un candidato fuerte, se agotan todas las
+  // consultas y el scoring decide con todo lo encontrado.
   for (var q = 0; q < queries.length; q++) {
     var encontrados = await buscar(queries[q]);
     for (var i = 0; i < encontrados.length; i++) {
@@ -413,6 +426,12 @@ async function extraer(tmdbId, mediaType, season, episode) {
         slugs.push(encontrados[i]);
       }
     }
+    var parciales = elegirCandidato(slugs, titulos, temporada);
+    var fuerte = false;
+    for (var pc = 0; pc < parciales.length; pc++) {
+      if (parciales[pc].titulo >= 0.9) fuerte = true;
+    }
+    if (fuerte) break;
   }
   if (!slugs.length) return [];
 
