@@ -247,7 +247,14 @@ var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
 var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 var PRESUPUESTO_MS = 40000;
 var MAX_EMBEDS_POR_IDIOMA = 4;
-var IDIOMAS = ["Latino", "Castellano", "Subtitulado", "Espa\u00f1ol", "Ingl\u00e9s"];
+// Únicos idiomas que este provider entrega, en orden de preferencia
+// (regla del repo: Latino, SUB, Inglés y Japonés; nada de España).
+// La selección de idioma trabaja SOLO con esta lista: un idioma fuera
+// de ella ni se prueba. (La prioridad anterior incluía Castellano y el
+// bucle corta en el primer idioma que resuelve: sus streams, que el
+// filtro final siempre descarta, dejaban sin probar los Subtitulado
+// permitidos de la misma página y el provider devolvía [].)
+var IDIOMAS_PERMITIDOS = ["Latino", "Subtitulado", "Ingl\u00e9s", "Japon\u00e9s"];
 
 function limit() {
   return Date.now() + PRESUPUESTO_MS;
@@ -802,9 +809,11 @@ function getStreams(tmdbId, mediaType, season, episode) {
       console.log("[SeriesFlixHD] idiomas: " + sec.orden.map(function (k) { return k + "=" + sec.mapa[k].length; }).join(" "));
       if (!sec.orden.length) return [];
 
-      var orden = [];
-      for (var i = 0; i < IDIOMAS.length; i++) if (sec.mapa[IDIOMAS[i]]) orden.push(IDIOMAS[i]);
-      for (var j = 0; j < sec.orden.length; j++) if (orden.indexOf(sec.orden[j]) < 0) orden.push(sec.orden[j]);
+      // Solo los idiomas entregables que la página sí trae, en el orden
+      // de IDIOMAS_PERMITIDOS: eso es todo lo que el bucle va a probar.
+      var orden = IDIOMAS_PERMITIDOS.filter(function (idioma) {
+        return !!sec.mapa[idioma];
+      });
 
       var acumulado = [];
       var i2 = 0;
