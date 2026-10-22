@@ -9,8 +9,10 @@ const TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
 const MAIN_URL = 'https://pelisplushd.bz';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 // Presupuesto por resolucion: el motor corta ~40s; dos resoluciones lentas ya
-// agotaban todo ("Failed to execute pending jobs"). 5 s deja margen.
-const RESOLVE_TIMEOUT = 5000;
+// agotaban todo ("Failed to execute pending jobs"). Era 5 s, pero medido
+// 2026-10-22 los hosts (morencius/vibuxer) tardan 4-7 s por pagina de forma
+// habitual y el abort a los 5 s mataba lecturas sanas -> 0 streams. 10 s.
+const RESOLVE_TIMEOUT = 10000;
 
 var ACCENT_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o' };
 function stripAccents(s) {
@@ -279,11 +281,12 @@ function resolveEmbed69(src) {
     .then(function(html) {
       // Formato /video/: URLs directas sin cifrado.
       if (src.indexOf('/video/') !== -1) return resolveVideoPageServers(html);
-      // Formato /f/: dataLink cifrado.
-      return decodeEmbed69Page(html).then(function(entries) {
-        if (!entries.length) return [];
-        return Promise.all(entries.map(function(e) { return streamFromEntry(e); }));
-      });
+      // Formato /f/: dataLink cifrado. OJO: decodeEmbed69Page es SINCRONO
+      // (devuelve el array de entradas, no una promesa); llamarle .then()
+      // lanzaba TypeError y el catch de abajo devolvia [] siempre.
+      var entries = decodeEmbed69Page(html);
+      if (!entries.length) return [];
+      return Promise.all(entries.map(function(e) { return streamFromEntry(e); }));
     })
     .catch(function() { return []; });
 }
