@@ -1,7 +1,7 @@
 import { extraer } from './extractor.js';
 import { withWorkingStreams } from '../shared/validate.js';
 
-// Cap total lookup at 40s (QuickJS/Nuvio has no setTimeout: runs uncapped there,
+// Cap total lookup at 55s (QuickJS/Nuvio has no setTimeout: runs uncapped there,
 // where the app enforces its own 60s limit).
 function withTimeout(promise, ms) {
   if (typeof setTimeout === 'undefined') return promise;
@@ -25,7 +25,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
     extraer(tmdbId, mediaType, season, episode).catch(function () {
       return [];
     }),
-    40000
+    55000
   ));
 }
 
