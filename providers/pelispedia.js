@@ -603,49 +603,29 @@ async function scrapePage(html, pageUrl, isMovie) {
     });
   }
 
-  // Los embeds se resuelven EN PARALELO (antes uno detrás de otro: el tiempo total
-  // era la suma de las latencias de todos los servidores). Máximo LIMITE a la vez.
+  // Resolución de embeds en paralelo (máximo LIMITE a la vez) esperando a que
+  // TODOS terminen. Cada fetch interno ya tiene su propio timeout
+  // (EMBED_TIMEOUT), así que un servidor colgado no puede bloquear la
+  // respuesta más allá de ese timeout, y ningún servidor sano se descarta
+  // por "llegar tarde": el resultado se arma solo con resoluciones
+  // terminadas, nunca con huecos de carreras a mitad de vuelo.
   const LIMITE = 4;
-  const resueltos = new Array(pendientes.length);
+  const resueltos = new Array(pendientes.length).fill(null);
   let siguiente = 0;
+  async function obrero() {
+    for (;;) {
+      const idx = siguiente++;
+      if (idx >= pendientes.length) return;
+      try {
+        resueltos[idx] = await resolveEmbed(pendientes[idx].iframeSrc, pageUrl);
+      } catch (err) {
+        resueltos[idx] = null;
+      }
+    }
+  }
   const obreros = [];
-  for (let w = 0; w < Math.min(LIMITE, pendientes.length); w++) {
-    obreros.push(
-      (async () => {
-        for (;;) {
-          const idx = siguiente++;
-          if (idx >= pendientes.length) return;
-          try {
-            resueltos[idx] = await resolveEmbed(pendientes[idx].iframeSrc, pageUrl);
-          } catch (err) {
-            resueltos[idx] = null;
-          }
-        }
-      })()
-    );
-  }
-  // Presupuesto de tiempo: si ya hay al menos un servidor resuelto y pasa el plazo, se
-  // devuelve lo que haya en vez de esperar al embed que esté colgado (un host muerto
-  // tarda el timeout completo de 12 s y bloqueaba la respuesta entera).
-  const PRESUPUESTO = 5000;
-  const esperas = [Promise.all(obreros)];
-  if (typeof setTimeout === "function") {
-    esperas.push(
-      new Promise(function (res) {
-        var t0 = Date.now();
-        function mirar() {
-          var listos = 0;
-          for (var i = 0; i < resueltos.length; i++) {
-            if (resueltos[i] && resueltos[i].url) listos++;
-          }
-          if (listos > 0 && Date.now() - t0 > PRESUPUESTO) return res();
-          setTimeout(mirar, 250);
-        }
-        mirar();
-      })
-    );
-  }
-  await Promise.race(esperas);
+  for (let w = 0; w < Math.min(LIMITE, pendientes.length); w++) obreros.push(obrero());
+  await Promise.all(obreros);
 
   for (let i = 0; i < pendientes.length; i++) {
     const resolved = resueltos[i];
