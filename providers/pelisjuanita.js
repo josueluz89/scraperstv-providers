@@ -1,6 +1,6 @@
 /**
  * pelisjuanita - Built from src/pelisjuanita/
- * Generated: 2026-10-17T15:17:29.856Z
+ * Generated: 2026-10-22T08:01:37.634Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7765,7 +7765,7 @@ function resolverPlayer(playerUrl) {
             Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             Referer: "https://videoapp.mov/"
           }
-        }, 2e4).then(function(vh) {
+        }, 35e3).then(function(vh) {
           var u = streamDeVimeos(vh);
           if (u) {
             return {
@@ -8108,7 +8108,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
     extraer(tmdbId, mediaType, season, episode).catch(function() {
       return [];
     }),
-    4e4
+    55e3
   ));
 }
 module.exports = { getStreams };
