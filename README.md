@@ -5,6 +5,8 @@ Repositorio con los **providers JS que corre MasterScrap** (la app de TV). La ap
 
 > El motor es tipo Stremio: al provider se le pasa un id de TMDB y devuelve enlaces.
 > Protocolo y límites del runtime: **[docs/CONTRATO.md](docs/CONTRATO.md)**.
+> Forma oficial de probar y arreglar providers (procedimiento y reglas del dueño):
+> **[docs/METODO.md](docs/METODO.md)**.
 
 ## Qué hay aquí
 
@@ -14,7 +16,7 @@ Repositorio con los **providers JS que corre MasterScrap** (la app de TV). La ap
 | `providers/<id>.js` | El scraper ya listo, uno por provider | **Sí**, baja sólo los activos |
 | `src/` + `build.js` | Fuentes y empaquetador (esbuild) de los que se compilan | No, es el taller |
 | `validar.js` | Comprueba que el manifest y los archivos cuadran | No |
-| `docs/` | Contrato, taller, histórico y créditos | No |
+| `docs/` | Contrato, método de trabajo, taller, histórico y créditos | No |
 
 ## Cómo lo usa la app
 
