@@ -301,8 +301,7 @@
       "version": "1.0.5",
       "author": "Masters",
       "supportedTypes": [
-        "movie",
-        "tv"
+        "movie"
       ],
       "filename": "providers/tioplus.js",
       "enabled": true,
@@ -422,9 +421,23 @@
     {
       "id": "pelisjuanita",
       "name": "PelisJuanita",
+      "description": "Películas, series y novelas en latino vía pelisjuanita.org (API REST propia; player videoapp.mov y embed vimeos). Solo video directo reproducible.",
       "version": "1.0.0",
+      "author": "Masters",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pelisjuanita.js",
       "enabled": true,
-      "file": "providers/pelisjuanita.js"
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=pelisjuanita.org&sz=128",
+      "contentLanguage": [
+        "es"
+      ]
     }
   ]
 }
