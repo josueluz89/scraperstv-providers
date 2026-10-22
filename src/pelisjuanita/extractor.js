@@ -203,7 +203,7 @@ function resolverPlayer(playerUrl) {
             Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             Referer: 'https://videoapp.mov/'
           }
-        }, 20000).then(function (vh) {
+        }, 35000).then(function (vh) {
           var u = streamDeVimeos(vh);
           if (u) {
             return {
