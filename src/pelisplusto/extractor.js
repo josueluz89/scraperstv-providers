@@ -1,38 +1,72 @@
+// pelisplusto — provider para pelisplushd.bz (el mismo sitio que usa pelisplus;
+// el dominio .to es otro espejo y NO se usa aquí: si un título no está en este,
+// el provider devuelve []).
+//
+// Flujo:
+//   1. TMDB: el título (original y localizado) y el año salen SOLO del id.
+//   2. Búsqueda en el sitio y elección de la ficha por puntaje.
+//   3. La ficha declara sus servidores: páginas cifradas de embed69
+//      (/f/<id>/, ver ./embed69.js) y, en fichas viejas, enlaces
+//      embed69.org/uqlink.php que desenvuelven a un host directo.
+//   4. Cada servidor se resuelve a video DIRECTO; el que no se puede resolver
+//      se entrega como embed con sus cabeceras y lo filtra la validación
+//      final compartida (solo pasa video real).
+//
+// Presupuesto de tiempo, diseñado para este sitio (medido 2026-10-22): los
+// hosts son lentos — páginas embed de 4–7 s habituales, picos de >20 s — y una
+// película trae hasta 6 entradas en paralelo, así que un tope corto por fetch
+// mata lecturas sanas. Cada etapa tiene el suyo y el total queda bajo el
+// límite duro de Nuvio (<60 s), con el corte de 40 s del index:
+//   TMDB 8 s · páginas del sitio 12 s · página embed69/uqlink 15 s ·
+//   cada fetch al resolver un host 12 s (las entradas van en paralelo).
+
 import { fetchText, fetchJson } from '../shared/http.js';
 import { getEmbedResolver, mapDomain } from '../shared/embedResolvers.js';
 import { decodeEmbed69Page, resolveHostStream, familyOf } from './embed69.js';
 
-const TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
-// Un solo espejo. No hay fallback: si el titulo no esta aqui, el provider devuelve 0 (paso con
-// "La muerte de Robin Hood" 2026, que si esta en el espejo .to del mismo sitio).
-const MAIN_URL = 'https://pelisplushd.bz';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-// 15 s era DEMASIADO (medido 2026-09-25): el motor da un presupuesto por busqueda y este
-// provider se pasaba, asi que el interprete QuickJS se liberaba con trabajos pendientes
-// ("Failed to execute pending jobs") y el provider devolvia 0 enlaces. Con 15 s, DOS
-// resoluciones lentas ya agotaban todo. 5 s deja margen para las que responden rapido (el
-// grueso de estos hosts contesta en <1,5 s) y no se come el presupuesto.
-// CORRECCION 2026-10-22: medido hoy, morencius/vibuxer tardan 4-7 s por
-// pagina de forma habitual; el abort a los 5 s mataba lecturas sanas y la
-// pelicula (6 entradas) devolvia 0 siempre. Se sube a 10 s: las resoluciones
-// van en paralelo y la llamada completa queda por debajo del cap de 40 s.
-const RESOLVE_TIMEOUT = 10000;
+// ---------------------------------------------------------------------------
+// Configuración
+// ---------------------------------------------------------------------------
 
-var ACCENT_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o' };
+var TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
+var SITE = 'https://pelisplushd.bz';
+var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+var TMDB_MS = 8000;
+var PAGE_MS = 12000;
+var EMBED_MS = 15000;
+var HOST_MS = 12000;
+
+var EMBED69_ORIGIN = 'https://embed69.org';
+
+// ---------------------------------------------------------------------------
+// Utilidades de texto (sin String.normalize: QuickJS no trae ICU)
+// ---------------------------------------------------------------------------
+
+var ACCENTS = {
+  'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n',
+  'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n',
+  'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u',
+  'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u',
+  'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o'
+};
+
 function stripAccents(s) {
-  return (s || '').replace(/[^\x00-\x7F]/g, function(c) { return ACCENT_MAP[c] || ''; });
+  return (s || '').replace(/[^\x00-\x7F]/g, function(c) { return ACCENTS[c] || ''; });
 }
+
 function normalizeText(text) {
   if (!text) return '';
-  return stripAccents(text.toLowerCase())
+  return stripAccents(String(text).toLowerCase())
     .replace(/[^a-z0-9]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+// Los títulos de las fichas vienen como "Ver Dune: Parte Dos (2024) Online…".
 function cleanTitle(raw) {
   if (!raw) return '';
-  return raw
+  return String(raw)
     .replace(/^ver\s+/i, '')
     .replace(/\s*\(\d{4}\)\s*/g, ' ')
     .split(' Online')[0]
@@ -42,32 +76,57 @@ function cleanTitle(raw) {
     .trim();
 }
 
-function getMediaTitle(tmdbId, mediaType) {
-  var url = 'https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY + '&language=es-MX';
-  return fetchJson(url).then(function(data) {
-    var title = mediaType === 'movie' ? data.title : data.name;
-    var originalTitle = mediaType === 'movie' ? data.original_title : data.original_name;
-    var year = null;
-    var date = mediaType === 'movie' ? data.release_date : data.first_air_date;
-    if (date && date.length >= 4) year = date.slice(0, 4);
-    return { title: title, originalTitle: originalTitle, year: year };
-  });
+function originOf(url) {
+  var m = String(url || '').match(/^(https?:\/\/[^\/]+)/i);
+  return m ? m[1] : '';
 }
 
-function extractSearchCandidates(html) {
+// ---------------------------------------------------------------------------
+// 1. TMDB: título y año desde el id (única fuente del título)
+// ---------------------------------------------------------------------------
+
+function resolveTitle(tmdbId, tmdbType) {
+  var url = 'https://api.themoviedb.org/3/' + tmdbType + '/' + tmdbId +
+    '?api_key=' + TMDB_API_KEY + '&language=es-MX';
+  return fetchJson(url, null, TMDB_MS)
+    .then(function(data) {
+      if (!data) return null;
+      var isMovie = tmdbType === 'movie';
+      var date = isMovie ? data.release_date : data.first_air_date;
+      return {
+        title: isMovie ? data.title : data.name,
+        originalTitle: isMovie ? data.original_title : data.original_name,
+        year: date && date.length >= 4 ? date.slice(0, 4) : null
+      };
+    })
+    .catch(function() { return null; });
+}
+
+// ---------------------------------------------------------------------------
+// 2. Búsqueda en el sitio y elección de ficha
+// ---------------------------------------------------------------------------
+
+var KIND_MARKERS = ['/pelicula/', '/serie/', '/anime/'];
+
+function parseSearchResults(html) {
   var candidates = [];
-  var anchorRegex = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  var anchorRe = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   var m;
-  while ((m = anchorRegex.exec(html)) !== null) {
+  while ((m = anchorRe.exec(html)) !== null) {
     var href = m[1];
     var inner = m[2];
-    if (!href) continue;
-    var kind = null;
-    if (href.indexOf('/pelicula/') !== -1) kind = 'movie';
-    else if (href.indexOf('/serie/') !== -1) kind = 'tv';
-    else if (href.indexOf('/anime/') !== -1) kind = 'tv';
-    if (!kind) continue;
-    if (href.indexOf('/temporada/') !== -1) continue;
+    if (!href || href.indexOf('/temporada/') !== -1) continue;
+
+    var marker = null;
+    for (var i = 0; i < KIND_MARKERS.length; i++) {
+      if (href.indexOf(KIND_MARKERS[i]) !== -1) { marker = KIND_MARKERS[i]; break; }
+    }
+    if (!marker) continue;
+
+    var rest = href.slice(href.indexOf(marker) + marker.length);
+    var slug = rest.split('/')[0].split('?')[0].split('#')[0];
+    if (!slug) continue;
+    if (marker === '/anime/') slug = 'anime/' + slug;
 
     var title = '';
     var dataTitle = m[0].match(/data-title="([^"]*)"/i);
@@ -80,14 +139,10 @@ function extractSearchCandidates(html) {
       var h = inner.match(/<(h2|p|span)\b[^>]*>([^<]*)<\/(h2|p|span)>/i);
       if (h) title = h[2];
     }
-    title = cleanTitle(title.replace(/<[^>]*>/g, '').trim());
+    title = cleanTitle(title.replace(/<[^>]*>/g, ''));
     if (!title) continue;
 
-    var slug = href.split('/pelicula/').pop().split('/serie/').pop().split('/anime/').pop()
-      .split('/')[0].split('?')[0];
-    if (!slug) continue;
-    var prefix = href.indexOf('/anime/') !== -1 ? 'anime/' : '';
-    candidates.push({ title: title, slug: prefix + slug, kind: kind });
+    candidates.push({ title: title, slug: slug, kind: marker === '/pelicula/' ? 'movie' : 'tv' });
   }
   var seen = {};
   return candidates.filter(function(c) {
@@ -99,73 +154,108 @@ function extractSearchCandidates(html) {
 }
 
 function searchSite(query) {
-  var url = MAIN_URL + '/search?s=' + encodeURIComponent(query);
-  return fetchText(url).then(function(html) {
-    return extractSearchCandidates(html);
-  }).catch(function() { return []; });
+  var url = SITE + '/search?s=' + encodeURIComponent(query);
+  return fetchText(url, null, PAGE_MS)
+    .then(parseSearchResults)
+    .catch(function() { return []; });
 }
 
-function scoreCandidates(candidates, media, expectedKind) {
+// Busca con el título original y, si difiere, con el localizado; acumula.
+function searchAll(media) {
+  var queries = [];
+  if (media.originalTitle) queries.push(media.originalTitle);
+  if (media.title && media.title !== media.originalTitle) queries.push(media.title);
+  var found = [];
+  var chain = Promise.resolve();
+  queries.forEach(function(q) {
+    chain = chain.then(function() {
+      return searchSite(q).then(function(c) { found = found.concat(c); });
+    });
+  });
+  return chain.then(function() { return found; });
+}
+
+function uniqueWords(text) {
+  var seen = {};
+  return normalizeText(text).split(' ').filter(function(w) {
+    if (!w || seen[w]) return false;
+    seen[w] = true;
+    return true;
+  });
+}
+
+function scoreCandidate(candidate, media, expectedKind) {
+  var nc = normalizeText(candidate.title);
   var no = normalizeText(media.originalTitle || '');
   var nt = normalizeText(media.title || '');
-  var words = (no + ' ' + nt).split(' ').filter(Boolean);
-  var unique = {};
-  words = words.filter(function(w) { if (unique[w]) return false; unique[w] = true; return true; });
+  var score = 0;
 
+  if (nc && (nc === no || nc === nt)) {
+    score = 100;
+  } else if ((no && (nc.indexOf(no) !== -1 || no.indexOf(nc) !== -1)) ||
+             (nt && (nc.indexOf(nt) !== -1 || nt.indexOf(nc) !== -1))) {
+    score = 80;
+  } else {
+    var qWords = uniqueWords((media.originalTitle || '') + ' ' + (media.title || ''));
+    var cWords = nc.split(' ').filter(Boolean);
+    var inTitle = 0, inCandidate = 0, a, b;
+    for (a = 0; a < qWords.length; a++) {
+      if (nc.indexOf(qWords[a]) !== -1) inTitle++;
+    }
+    for (b = 0; b < cWords.length; b++) {
+      if (qWords.indexOf(cWords[b]) !== -1) inCandidate++;
+    }
+    score = inTitle * 8 + inCandidate * 5;
+  }
+
+  if (media.year && candidate.title.indexOf(media.year) !== -1) score += 5;
+  if (candidate.kind === expectedKind) score += 3;
+  return score;
+}
+
+// Sin una ficha con puntaje mínimo no hay match: mejor [] que un título ajeno.
+function pickMatch(candidates, media, expectedKind) {
   var best = null, bestScore = -1;
   for (var i = 0; i < candidates.length; i++) {
-    var c = candidates[i];
-    var nc = normalizeText(c.title);
-    var score = 0;
-    if (nc === no || nc === nt) score = 100;
-    else if ((no && (nc.indexOf(no) !== -1 || no.indexOf(nc) !== -1)) ||
-             (nt && (nc.indexOf(nt) !== -1 || nt.indexOf(nc) !== -1))) score = 80;
-    if (score === 0) {
-      var qMatch = 0, cMatch = 0, w;
-      var cWords = nc.split(' ').filter(Boolean);
-      for (var a = 0; a < words.length; a++) {
-        if (nc.indexOf(words[a]) !== -1) qMatch++;
-      }
-      for (var b = 0; b < cWords.length; b++) {
-        for (var q = 0; q < words.length; q++) {
-          if (words[q] === cWords[b]) { cMatch++; break; }
-        }
-      }
-      score = qMatch * 8 + cMatch * 5;
-    }
-    if (media.year && c.title.indexOf(media.year) !== -1) score += 5;
-    if (c.kind === expectedKind) score += 3;
-    if (score > bestScore) { bestScore = score; best = c; }
+    var s = scoreCandidate(candidates[i], media, expectedKind);
+    if (s > bestScore) { bestScore = s; best = candidates[i]; }
   }
   if (!best || bestScore < 15) return null;
   return best;
 }
 
-function getServersFromDetail(html) {
-  var videoMap = {};
-  var vRegex = /video\[(\d+)\]\s*=\s*['"]([^'"]+)['"]/g;
+// ---------------------------------------------------------------------------
+// 3. Servidores declarados en la ficha
+// ---------------------------------------------------------------------------
+
+function parseServers(html) {
+  var byIndex = {};
+  var videoRe = /video\[(\d+)\]\s*=\s*['"]([^'"]+)['"]/g;
   var vm;
-  while ((vm = vRegex.exec(html)) !== null) {
-    videoMap[parseInt(vm[1], 10)] = vm[2];
+  while ((vm = videoRe.exec(html)) !== null) {
+    byIndex[parseInt(vm[1], 10)] = vm[2];
   }
+
   var labels = {};
-  var liRegex = /<li[^>]*data-id="(\d+)"[^>]*>([\s\S]*?)<\/li>/gi;
+  var liRe = /<li[^>]*data-id="(\d+)"[^>]*>([\s\S]*?)<\/li>/gi;
   var lm;
-  while ((lm = liRegex.exec(html)) !== null) {
-    var label = lm[2].replace(/<[^>]*>/g, '').trim() || 'Server';
-    labels[parseInt(lm[1], 10)] = label;
+  while ((lm = liRe.exec(html)) !== null) {
+    var label = lm[2].replace(/<[^>]*>/g, '').trim();
+    if (label) labels[parseInt(lm[1], 10)] = label;
   }
+
   var servers = [];
-  for (var idx in videoMap) {
-    if (!Object.prototype.hasOwnProperty.call(videoMap, idx)) continue;
-    var src = videoMap[idx];
+  for (var idx in byIndex) {
+    if (!Object.prototype.hasOwnProperty.call(byIndex, idx)) continue;
+    var src = byIndex[idx];
     if (!src || src.indexOf('http') !== 0) continue;
     servers.push({ src: src, label: labels[idx] || ('Server ' + idx) });
   }
+
   if (servers.length === 0) {
-    var ifRegex = /<iframe\b[^>]*src="([^"]+)"[^>]*>/gi;
+    var iframeRe = /<iframe\b[^>]*src="([^"]+)"[^>]*>/gi;
     var im, n = 0;
-    while ((im = ifRegex.exec(html)) !== null) {
+    while ((im = iframeRe.exec(html)) !== null) {
       var isrc = im[1];
       if (isrc.indexOf('//') === 0) isrc = 'https:' + isrc;
       if (isrc.indexOf('http') !== 0) continue;
@@ -173,6 +263,7 @@ function getServersFromDetail(html) {
       servers.push({ src: isrc, label: 'Embed ' + n });
     }
   }
+
   var seen = {};
   return servers.filter(function(s) {
     if (seen[s.src]) return false;
@@ -181,108 +272,124 @@ function getServersFromDetail(html) {
   });
 }
 
-function unwrapEmbed69(src) {
-  // Rutas viejas de PelisPlusHD (uqlink.php) desenvuelven a un iframe directo.
-  // Hoy el sitio usa /f/<imdb_id>/ (pagina cifrada, ver decodeEmbed69Page).
-  if (src.indexOf('embed69.org/uqlink.php') === -1) return Promise.resolve(null);
-  return fetchText(src, { headers: { Referer: MAIN_URL + '/', 'User-Agent': UA } }, RESOLVE_TIMEOUT)
-    .then(function(html) {
-      var m = html.match(/<iframe\b[^>]*src="([^"]+)"[^>]*>/i);
-      if (!m) return null;
-      var isrc = m[1];
-      if (isrc.indexOf('//') === 0) isrc = 'https:' + isrc;
-      return isrc.indexOf('http') === 0 ? isrc : null;
-    })
-    .catch(function() { return null; });
-}
+// ---------------------------------------------------------------------------
+// 4. Resolución de servidores a video directo
+// ---------------------------------------------------------------------------
 
-function originOfUrl(url) {
-  var m = String(url || '').match(/^(https?:\/\/[^\/]+)/i);
-  return m ? m[1] : '';
-}
-
-function makeStream(serverLabel, language, resolucion, fallbackUrl, fallbackHeaders) {
-  var url = (resolucion && resolucion.url) || fallbackUrl;
+// `resolved` es { url, quality, headers } o null; sin resolución se usa el
+// fallback (la URL del embed con sus cabeceras), si lo hay.
+function buildStream(label, language, resolved, fallbackUrl, fallbackHeaders) {
+  var url = (resolved && resolved.url) || fallbackUrl;
   if (!url) return null;
-  var quality = (resolucion && resolucion.quality) || 'HD';
-  var headers = (resolucion && resolucion.headers) || fallbackHeaders;
   return {
-    title: quality + ' · ' + language + ' · ' + serverLabel,
-    quality: quality,
+    title: ((resolved && resolved.quality) || 'HD') + ' · ' + language + ' · ' + label,
+    quality: (resolved && resolved.quality) || 'HD',
     language: language,
     url: url,
-    headers: headers,
+    headers: (resolved && resolved.headers) || fallbackHeaders
   };
 }
 
-// Host directo (sin embed69 de por medio) resuelto con los resolvers compartidos.
-function resolveDirect(src, serverLabel) {
-  var fixed = mapDomain(src);
-  var resolver = getEmbedResolver(fixed);
-  if (!resolver) return Promise.resolve(null);
-  var origin = originOfUrl(fixed);
-  return resolver(fixed)
-    .then(function(result) {
-      return makeStream(serverLabel, 'Latino', result, null, { Referer: origin + '/', 'User-Agent': UA });
-    })
-    .catch(function() { return null; });
+// Resuelve una URL de embed con los resolvers compartidos (con el dominio ya
+// rotado por mapDomain). Nunca lanza: devuelve stream o null.
+function resolveViaShared(url, label, language, fallbackUrl, fallbackHeaders) {
+  var fixed = mapDomain(url);
+  var resolver = null;
+  try { resolver = getEmbedResolver(fixed); } catch (e) { resolver = null; }
+  var attempt = resolver
+    ? Promise.resolve().then(function() { return resolver(fixed); }).catch(function() { return null; })
+    : Promise.resolve(null);
+  return attempt.then(function(res) {
+    if (res && res.url) return buildStream(label, language, res, null, fallbackHeaders);
+    if (fallbackUrl) return buildStream(label, language, null, fallbackUrl, fallbackHeaders);
+    return null;
+  });
 }
 
-// Entrada descifrada de embed69 -> stream publicable. Si el .m3u8 no se puede
-// resolver, se entrega el propio embed con sus cabeceras (igual que hace el
-// provider embed69) para que la app lo resuelva por su relay.
-function streamFromEntry(entry) {
+// Servidor directo de la ficha (sin embed69 de por medio). Sin resolver
+// compartido no hay stream: no se entrega el embed crudo en esta ruta.
+function resolveDirect(src, label) {
+  var headers = { Referer: originOf(mapDomain(src)) + '/', 'User-Agent': UA };
+  return resolveViaShared(src, label, 'Latino', null, headers);
+}
+
+// Una entrada descifrada de embed69 -> stream. Las familias conocidas
+// (streamwish/vidhide) se resuelven con el resolver propio del módulo
+// embed69; el resto pasa por los resolvers compartidos. Si nada resuelve,
+// queda el embed mismo como fallback con cabeceras.
+function resolveEntry(entry) {
+  var label = entry.servidor
+    ? entry.servidor.charAt(0).toUpperCase() + entry.servidor.slice(1)
+    : 'Embed';
+  var headers = {
+    Referer: originOf(entry.url) + '/',
+    Origin: EMBED69_ORIGIN,
+    'User-Agent': UA
+  };
   var fam = familyOf(entry.servidor, entry.url);
-  var serverLabel = entry.servidor ? entry.servidor.charAt(0).toUpperCase() + entry.servidor.slice(1) : 'Embed';
-  var prom;
   if (fam) {
-    prom = resolveHostStream(entry.url, fam, RESOLVE_TIMEOUT);
-  } else {
-    var fixed = mapDomain(entry.url);
-    var resolver = getEmbedResolver(fixed);
-    prom = resolver ? resolver(fixed) : Promise.resolve(null);
+    return resolveHostStream(entry.url, fam, HOST_MS)
+      .catch(function() { return null; })
+      .then(function(res) {
+        return buildStream(label, entry.language, res, entry.url, headers);
+      });
   }
-  var origin = originOfUrl(entry.url);
-  var fallbackHeaders = { Referer: origin + '/', Origin: 'https://embed69.org', 'User-Agent': UA };
-  return prom
-    .catch(function() { return null; })
-    .then(function(res) {
-      return makeStream(serverLabel, entry.language, res, entry.url, fallbackHeaders);
-    });
+  return resolveViaShared(entry.url, label, entry.language, entry.url, headers);
 }
 
-// Pagina embed69.org/f/<id>/: trae `dataLink` cifrado (PoW + AES-256-CBC).
+// Página embed69.org/f/<id>/: trae el dataLink cifrado (PoW + AES-256-CBC)
+// que decodeEmbed69Page — función SINCRÓNICA — convierte en entradas.
 function resolveEmbed69(src) {
   return fetchText(src, {
     headers: {
       'X-Requested-With': 'XMLHttpRequest',
-      Referer: MAIN_URL + '/',
-      Origin: 'https://embed69.org',
+      Referer: SITE + '/',
+      Origin: EMBED69_ORIGIN,
       'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-      'User-Agent': UA,
-    },
-  }, RESOLVE_TIMEOUT)
-    .then(function(html) { return decodeEmbed69Page(html); })
-    .then(function(entries) {
+      'User-Agent': UA
+    }
+  }, EMBED_MS)
+    .then(function(html) {
+      var entries = decodeEmbed69Page(html);
       if (!entries.length) return [];
-      return Promise.all(entries.map(function(e) { return streamFromEntry(e); }));
+      return Promise.all(entries.map(resolveEntry));
+    })
+    .then(function(streams) {
+      return streams.filter(function(s) { return !!s; });
     })
     .catch(function() { return []; });
 }
 
+// Ruta vieja de PelisPlusHD: uqlink.php desenvuelve a un iframe directo.
+// Hoy el sitio ya no la entrega en estas fichas, pero el comportamiento se
+// conserva: si aparece, se desenvuelve y se resuelve como host directo.
+function unwrapUqlink(src) {
+  return fetchText(src, { headers: { Referer: SITE + '/', 'User-Agent': UA } }, EMBED_MS)
+    .then(function(html) {
+      var m = html.match(/<iframe\b[^>]*src="([^"]+)"[^>]*>/i);
+      if (!m) return null;
+      var url = m[1];
+      if (url.indexOf('//') === 0) url = 'https:' + url;
+      return url.indexOf('http') === 0 ? url : null;
+    })
+    .catch(function() { return null; });
+}
+
+function resolveServer(server) {
+  var src = server.src;
+  if (src.indexOf('embed69.org/uqlink.php') !== -1) {
+    return unwrapUqlink(src).then(function(url) {
+      if (!url) return [];
+      return resolveDirect(url, server.label).then(function(st) { return st ? [st] : []; });
+    });
+  }
+  if (src.indexOf('embed69.org/') !== -1) return resolveEmbed69(src);
+  return resolveDirect(src, server.label).then(function(st) { return st ? [st] : []; });
+}
+
+// Todos los servidores en paralelo; la salida va sin duplicados por URL.
 function resolveServers(servers) {
-  var promises = servers.map(function(s) {
-    var src = s.src;
-    if (src.indexOf('embed69.org/uqlink.php') !== -1) {
-      return unwrapEmbed69(src).then(function(unwrapped) {
-        if (!unwrapped) return [];
-        return resolveDirect(unwrapped, s.label).then(function(st) { return st ? [st] : []; });
-      });
-    }
-    if (src.indexOf('embed69.org/') !== -1) return resolveEmbed69(src);
-    return resolveDirect(src, s.label).then(function(st) { return st ? [st] : []; });
-  });
-  return Promise.all(promises).then(function(lists) {
+  return Promise.all(servers.map(resolveServer)).then(function(lists) {
     var out = [];
     var seen = {};
     for (var i = 0; i < lists.length; i++) {
@@ -298,17 +405,18 @@ function resolveServers(servers) {
   });
 }
 
-function getMovieStreams(slug) {
-  return fetchText(MAIN_URL + '/pelicula/' + slug)
-    .then(function(html) {
-      return resolveServers(getServersFromDetail(html));
-    })
+// ---------------------------------------------------------------------------
+// 5. Flujo por tipo de contenido
+// ---------------------------------------------------------------------------
+
+function movieStreams(slug) {
+  return fetchText(SITE + '/pelicula/' + slug, null, PAGE_MS)
+    .then(function(html) { return resolveServers(parseServers(html)); })
     .catch(function() { return []; });
 }
 
-// El href de la temporada se busca por segmento exacto: el regex anterior
-// capturaba la comilla de cierre dentro de la URL (`href=".../capitulo/1"` ->
-// `...1"\n class=`), así que el fetch del episodio daba 500.
+// El enlace del episodio se busca por segmento exacto: un regex laxo captura
+// la comilla de cierre dentro de la URL y el fetch del episodio da 500.
 function findEpisodeUrl(html, season, episode) {
   var needle = '/temporada/' + season + '/capitulo/' + episode;
   var re = /href="([^"]+)"/gi;
@@ -325,49 +433,42 @@ function findEpisodeUrl(html, season, episode) {
   return null;
 }
 
-function getEpisodeStreams(slug, season, episode) {
+function episodeStreams(slug, season, episode) {
   var basePath = slug.indexOf('anime/') === 0
-    ? MAIN_URL + '/' + slug
-    : MAIN_URL + '/serie/' + slug;
-  return fetchText(basePath)
+    ? SITE + '/' + slug
+    : SITE + '/serie/' + slug;
+  return fetchText(basePath, null, PAGE_MS)
     .then(function(html) {
       var epUrl = findEpisodeUrl(html, season, episode);
       if (!epUrl) epUrl = basePath + '/temporada/' + season + '/capitulo/' + episode;
-      if (epUrl.indexOf('http') !== 0) epUrl = MAIN_URL + (epUrl.charAt(0) === '/' ? '' : '/') + epUrl;
-      return fetchText(epUrl);
+      if (epUrl.indexOf('http') !== 0) {
+        epUrl = SITE + (epUrl.charAt(0) === '/' ? '' : '/') + epUrl;
+      }
+      return fetchText(epUrl, null, PAGE_MS);
     })
-    .then(function(html) {
-      return resolveServers(getServersFromDetail(html));
-    })
+    .then(function(html) { return resolveServers(parseServers(html)); })
     .catch(function() { return []; });
 }
 
+// ---------------------------------------------------------------------------
+// Entrada (contrato): nunca lanza; ante cualquier fallo devuelve [].
+// ---------------------------------------------------------------------------
+
 export function extractStreams(tmdbId, mediaType, season, episode) {
-  // Nuvio passes Stremio content types ("movie"/"series"); TMDB needs "movie"/"tv".
+  // Nuvio manda "movie"/"series"/"anime"; TMDB necesita "movie"/"tv".
   var tmdbType = (mediaType === 'tv' || mediaType === 'series' || mediaType === 'anime') ? 'tv' : 'movie';
-  var expectedKind = tmdbType;
-  return getMediaTitle(tmdbId, tmdbType)
+  return resolveTitle(tmdbId, tmdbType)
     .then(function(media) {
-      var queries = [];
-      if (media.originalTitle) queries.push(media.originalTitle);
-      if (media.title && media.title !== media.originalTitle) queries.push(media.title);
-      if (queries.length === 0) return [];
-      var all = [];
-      var chain = Promise.resolve();
-      queries.forEach(function(q) {
-        chain = chain.then(function() {
-          return searchSite(q).then(function(c) { all = all.concat(c); });
-        });
-      });
-      return chain.then(function() {
-        var best = scoreCandidates(all, media, expectedKind);
-        if (!best) return [];
-        if (expectedKind === 'movie') return getMovieStreams(best.slug);
-        return getEpisodeStreams(best.slug, season || 1, episode || 1);
+      if (!media) return [];
+      return searchAll(media).then(function(candidates) {
+        var match = pickMatch(candidates, media, tmdbType);
+        if (!match) return [];
+        if (tmdbType === 'movie') return movieStreams(match.slug);
+        return episodeStreams(match.slug, season || 1, episode || 1);
       });
     })
     .catch(function(err) {
-      console.error('[Pelisplusto] Error: ' + (err && err.message ? err.message : err));
+      console.error('[pelisplusto] ' + (err && err.message ? err.message : err));
       return [];
     });
 }
