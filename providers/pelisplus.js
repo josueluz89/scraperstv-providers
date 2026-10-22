@@ -1,6 +1,6 @@
 /**
  * pelisplus - Built from src/pelisplus/
- * Generated: 2026-10-16T23:40:41.917Z
+ * Generated: 2026-10-22T08:02:55.357Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -8334,7 +8334,7 @@ function resolveHostStream(embedUrl, family, timeoutMs) {
 var TMDB_API_KEY = "1f54bd990f1cdfb230adb312546d765d";
 var MAIN_URL = "https://pelisplushd.bz";
 var UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-var RESOLVE_TIMEOUT = 5e3;
+var RESOLVE_TIMEOUT = 1e4;
 var ACCENT_MAP = { "\xE1": "a", "\xE9": "e", "\xED": "i", "\xF3": "o", "\xFA": "u", "\xFC": "u", "\xF1": "n", "\xC1": "a", "\xC9": "e", "\xCD": "i", "\xD3": "o", "\xDA": "u", "\xDC": "u", "\xD1": "n", "\xE0": "a", "\xE8": "e", "\xEC": "i", "\xF2": "o", "\xF9": "u", "\xE2": "a", "\xEA": "e", "\xEE": "i", "\xF4": "o", "\xFB": "u", "\xE4": "a", "\xEB": "e", "\xEF": "i", "\xF6": "o", "\xE7": "c", "\xE3": "a", "\xF5": "o" };
 function stripAccents(s) {
   return (s || "").replace(/[^\x00-\x7F]/g, function(c) {
@@ -8621,13 +8621,12 @@ function resolveEmbed69(src) {
   }, RESOLVE_TIMEOUT).then(function(html) {
     if (src.indexOf("/video/") !== -1)
       return resolveVideoPageServers(html);
-    return decodeEmbed69Page(html).then(function(entries) {
-      if (!entries.length)
-        return [];
-      return Promise.all(entries.map(function(e) {
-        return streamFromEntry(e);
-      }));
-    });
+    var entries = decodeEmbed69Page(html);
+    if (!entries.length)
+      return [];
+    return Promise.all(entries.map(function(e) {
+      return streamFromEntry(e);
+    }));
   }).catch(function() {
     return [];
   });
