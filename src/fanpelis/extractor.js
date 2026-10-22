@@ -89,7 +89,54 @@ function urlReproducible(url, headers) {
   }).catch(function () { return false; });
 }
 
-/** Resuelve los embeds a video directo validado (en paralelo). */
+/** Plazo máximo por embed. La versión anterior lanzaba todas las resoluciones
+ *  sin ningún límite y esperaba a que terminara la más lenta: los hosts
+ *  muertos o colgados (goodstream, hlswish) quemaban 30-50 s en reintentos y
+ *  el tope global de getStreams devolvía [] aunque VOE/FileMoon ya hubieran
+ *  resuelto. Cada embed corre ahora con su propio plazo (35 s) y los que
+ *  funcionan entregan sin esperar a los caídos; el tope global queda en
+ *  55 s como red de seguridad, bajo el límite de 60 s de la app. */
+var PLAZO_EMBED_MS = 35000;
+
+/** Corre una promesa con plazo; si vence, resuelve null. Sin setTimeout
+ *  (QuickJS) la promesa corre sin plazo, como el resto del provider. */
+function conPlazo(promesa, ms) {
+  if (typeof setTimeout === 'undefined') return promesa;
+  return Promise.race([
+    promesa,
+    new Promise(function (res) { setTimeout(function () { res(null); }, ms); })
+  ]);
+}
+
+/** Resuelve UN embed a stream de video directo validado, o null. */
+function resolverUno(em) {
+  var url = em.url;
+  var resolver = null;
+  try { resolver = getEmbedResolver(url); } catch (e) { resolver = null; }
+  if (typeof resolver !== 'function') return Promise.resolve(null); // sin resolver: no se emite
+  return resolver(url).then(function (r) {
+    if (!r || !r.url) return null;
+    var cabeceras = { 'User-Agent': UA };
+    if (r.headers) {
+      var k;
+      for (k in r.headers) cabeceras[k] = r.headers[k];
+    }
+    return urlReproducible(r.url, cabeceras).then(function (ok) {
+      if (!ok) return null;
+      var lang = em.lang || 'Latino';
+      return {
+        title: getServerLabel(url) + ' · ' + lang,
+        quality: r.quality || em.quality || 'HD',
+        language: lang,
+        url: r.url,
+        headers: cabeceras,
+      };
+    });
+  }).catch(function () { return null; });
+}
+
+/** Resuelve los embeds a video directo validado (en paralelo, cada uno
+ *  acotado por PLAZO_EMBED_MS). */
 function resolverEmbeds(embeds) {
   var vistos = {};
   var lista = [];
@@ -101,29 +148,7 @@ function resolverEmbeds(embeds) {
     lista.push(em);
   });
   var promesas = lista.map(function (em) {
-    var url = em.url;
-    var resolver = null;
-    try { resolver = getEmbedResolver(url); } catch (e) { resolver = null; }
-    if (typeof resolver !== 'function') return Promise.resolve(null); // sin resolver: no se emite
-    return resolver(url).then(function (r) {
-      if (!r || !r.url) return null;
-      var cabeceras = { 'User-Agent': UA };
-      if (r.headers) {
-        var k;
-        for (k in r.headers) cabeceras[k] = r.headers[k];
-      }
-      return urlReproducible(r.url, cabeceras).then(function (ok) {
-        if (!ok) return null;
-        var lang = em.lang || 'Latino';
-        return {
-          title: getServerLabel(url) + ' · ' + lang,
-          quality: r.quality || em.quality || 'HD',
-          language: lang,
-          url: r.url,
-          headers: cabeceras,
-        };
-      });
-    }).catch(function () { return null; });
+    return conPlazo(resolverUno(em), PLAZO_EMBED_MS);
   });
   return Promise.all(promesas).then(function (res) {
     var streams = [];
