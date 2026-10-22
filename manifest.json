@@ -389,7 +389,7 @@
         "tv"
       ],
       "filename": "providers/masters.js",
-      "enabled": false,
+      "enabled": true,
       "formats": [
         "mp4",
         "mkv"
