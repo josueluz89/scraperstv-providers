@@ -1,6 +1,6 @@
 /**
  * cinecalidad - Built from src/cinecalidad/
- * Generated: 2026-10-16T23:40:40.367Z
+ * Generated: 2026-10-22T08:11:58.518Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7631,6 +7631,14 @@ function tituloTmdb(tmdbId, mediaType) {
 function norm(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9áéíóúñü]/g, "");
 }
+function slugify(s) {
+  var t = String(s || "").toLowerCase().replace(/[áàäâ]/g, "a").replace(/[éèëê]/g, "e").replace(/[íìïî]/g, "i").replace(/[óòöô]/g, "o").replace(/[úùüû]/g, "u").replace(/ñ/g, "n");
+  return t.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function slugDeHref(href) {
+  var m = String(href || "").match(/ver-(?:pelicula|serie)\/([^\/\?#]+)/);
+  return m ? m[1] : "";
+}
 function linksDeBusqueda(html, tipo) {
   var marca = tipo === "movie" ? "ver-pelicula/" : "ver-serie/";
   var res = [];
@@ -7643,23 +7651,38 @@ function linksDeBusqueda(html, tipo) {
       continue;
     vistos[href] = true;
     var txt = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    res.push({ href, texto: txt });
+    res.push({ href, texto: txt, slug: slugDeHref(href) });
   }
   return res;
 }
-function mejorMatch(links, titulo, anio) {
+function mejorMatch(links, infos, anio) {
   var mejor = null;
-  var mejorPts = -1;
-  var nq = norm(titulo);
+  var mejorPts = 0;
   for (var i = 0; i < links.length; i++) {
     var l = links[i];
-    var nt = norm(l.texto);
     var pts = 0;
-    if (nt === nq)
-      pts += 4;
-    else if (nt.indexOf(nq) >= 0 || nq.indexOf(nt) >= 0)
-      pts += 2;
-    else
+    var j, nq, nt;
+    for (j = 0; j < infos.length; j++) {
+      if (!infos[j].slug)
+        continue;
+      if (l.slug === infos[j].slug)
+        pts = Math.max(pts, 6);
+      else if (l.slug.indexOf(infos[j].slug + "-") === 0)
+        pts = Math.max(pts, 5);
+    }
+    nt = norm(l.texto);
+    if (nt) {
+      for (j = 0; j < infos.length; j++) {
+        nq = norm(infos[j].titulo);
+        if (!nq)
+          continue;
+        if (nt === nq)
+          pts = Math.max(pts, 4);
+        else if (nt.indexOf(nq) >= 0 || nt.length >= 3 && nq.indexOf(nt) >= 0)
+          pts = Math.max(pts, 2);
+      }
+    }
+    if (pts <= 0)
       continue;
     if (anio && l.texto.indexOf(String(anio)) >= 0)
       pts += 3;
@@ -7670,14 +7693,29 @@ function mejorMatch(links, titulo, anio) {
   }
   return mejor;
 }
-function buscar(titulo, tipo, anio) {
-  var url = BASE + "/?s=" + encodeURIComponent(titulo);
+function buscar(consulta, infos, tipo, anio) {
+  var url = BASE + "/?s=" + encodeURIComponent(consulta);
   return fetchText(url, { headers: hdrs() }, 12e3).then(function(html) {
-    var links = linksDeBusqueda(html, tipo);
-    return mejorMatch(links, titulo, anio);
+    return mejorMatch(linksDeBusqueda(html, tipo), infos, anio);
   }).catch(function() {
     return null;
   });
+}
+function consultasDe(info) {
+  var consultas = [];
+  function add(q) {
+    if (q && consultas.indexOf(q) < 0)
+      consultas.push(q);
+  }
+  function primeraPalabra(titulo) {
+    var p = String(titulo || "").split(/\s+/)[0].replace(/:+$/, "");
+    return p && p.length >= 3 ? p : "";
+  }
+  add(info.titulo);
+  add(info.original);
+  add(primeraPalabra(info.original));
+  add(primeraPalabra(info.titulo));
+  return consultas;
 }
 function embedsDePagina(html) {
   var res = [];
@@ -7770,25 +7808,23 @@ function paginaAStreams(url) {
     return [];
   });
 }
-function slugSerie(href) {
-  var m = String(href).match(/ver-serie\/([^\/\?#]+)/);
-  return m ? m[1] : "";
-}
 function extractStreams(tmdbId, mediaType, season, episode) {
   var esPeli = String(mediaType || "").toLowerCase() === "movie";
   var tipo = esPeli ? "movie" : "tv";
   return tituloTmdb(tmdbId, mediaType).then(function(info) {
     if (!info || !info.titulo)
       return [];
-    var titulos = [info.titulo];
-    if (info.original && info.original !== info.titulo)
-      titulos.push(info.original);
+    var infos = [{ titulo: info.titulo, slug: slugify(info.titulo) }];
+    if (info.original && info.original !== info.titulo) {
+      infos.push({ titulo: info.original, slug: slugify(info.original) });
+    }
+    var consultas = consultasDe(info);
     var cadena = Promise.resolve(null);
-    titulos.forEach(function(t) {
+    consultas.forEach(function(q) {
       cadena = cadena.then(function(hit) {
         if (hit)
           return hit;
-        return buscar(t, tipo, info.anio);
+        return buscar(q, infos, tipo, info.anio);
       });
     });
     return cadena.then(function(hit) {
@@ -7802,10 +7838,9 @@ function extractStreams(tmdbId, mediaType, season, episode) {
       var e = parseInt(episode, 10);
       if (isNaN(e) || e < 1)
         e = 1;
-      var slug = slugSerie(hit.href);
-      if (!slug)
+      if (!hit.slug)
         return [];
-      var epUrl = BASE + "/ver-el-episodio/" + slug + "-" + s + "x" + e + "/";
+      var epUrl = BASE + "/ver-el-episodio/" + hit.slug + "-" + s + "x" + e + "/";
       return paginaAStreams(epUrl);
     });
   }).catch(function() {
