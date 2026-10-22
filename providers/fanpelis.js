@@ -1,6 +1,6 @@
 /**
  * fanpelis - Built from src/fanpelis/
- * Generated: 2026-10-16T23:40:40.883Z
+ * Generated: 2026-10-22T08:18:09.880Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7681,6 +7681,54 @@ function urlReproducible(url, headers) {
     return false;
   });
 }
+var PLAZO_EMBED_MS = 35e3;
+function conPlazo(promesa, ms) {
+  if (typeof setTimeout === "undefined")
+    return promesa;
+  return Promise.race([
+    promesa,
+    new Promise(function(res) {
+      setTimeout(function() {
+        res(null);
+      }, ms);
+    })
+  ]);
+}
+function resolverUno(em) {
+  var url = em.url;
+  var resolver = null;
+  try {
+    resolver = getEmbedResolver(url);
+  } catch (e) {
+    resolver = null;
+  }
+  if (typeof resolver !== "function")
+    return Promise.resolve(null);
+  return resolver(url).then(function(r) {
+    if (!r || !r.url)
+      return null;
+    var cabeceras = { "User-Agent": UA };
+    if (r.headers) {
+      var k;
+      for (k in r.headers)
+        cabeceras[k] = r.headers[k];
+    }
+    return urlReproducible(r.url, cabeceras).then(function(ok) {
+      if (!ok)
+        return null;
+      var lang = em.lang || "Latino";
+      return {
+        title: getServerLabel(url) + " \xB7 " + lang,
+        quality: r.quality || em.quality || "HD",
+        language: lang,
+        url: r.url,
+        headers: cabeceras
+      };
+    });
+  }).catch(function() {
+    return null;
+  });
+}
 function resolverEmbeds(embeds) {
   var vistos = {};
   var lista = [];
@@ -7693,39 +7741,7 @@ function resolverEmbeds(embeds) {
     lista.push(em);
   });
   var promesas = lista.map(function(em) {
-    var url = em.url;
-    var resolver = null;
-    try {
-      resolver = getEmbedResolver(url);
-    } catch (e) {
-      resolver = null;
-    }
-    if (typeof resolver !== "function")
-      return Promise.resolve(null);
-    return resolver(url).then(function(r) {
-      if (!r || !r.url)
-        return null;
-      var cabeceras = { "User-Agent": UA };
-      if (r.headers) {
-        var k;
-        for (k in r.headers)
-          cabeceras[k] = r.headers[k];
-      }
-      return urlReproducible(r.url, cabeceras).then(function(ok) {
-        if (!ok)
-          return null;
-        var lang = em.lang || "Latino";
-        return {
-          title: getServerLabel(url) + " \xB7 " + lang,
-          quality: r.quality || em.quality || "HD",
-          language: lang,
-          url: r.url,
-          headers: cabeceras
-        };
-      });
-    }).catch(function() {
-      return null;
-    });
+    return conPlazo(resolverUno(em), PLAZO_EMBED_MS);
   });
   return Promise.all(promesas).then(function(res) {
     var streams = [];
@@ -8039,7 +8055,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
     extractStreams(tmdbId, mediaType, season, episode).catch(function() {
       return [];
     }),
-    4e4
+    55e3
   ));
 }
 module.exports = { getStreams };
