@@ -487,7 +487,7 @@ function fetchText(url, headers, timeoutMs) {
 function fetchJsonSafe(url, headers, timeoutMs) {
   return fetchText(url, headers, timeoutMs).then(function (raw) {
     try { return JSON.parse(raw); } catch (e) { return null; }
-  });
+  }).catch(function () { return null; });
 }
 
 // ---------------------------------------------------------------------------
@@ -517,13 +517,14 @@ function parseImdbFromTmdb(data) {
   return null;
 }
 
-// Presupuesto duro del provider. El motor (Fire TV) corta a los ~9 s, asi que
-// todo el pipeline tiene que cerrar bastante antes: 4,2 s de trabajo + 0.5 s de
-// margen para que withTimeout devuelva lo que ya este listo (medido: 4-6.5 s
-// con red real). El motor da 9 s, pero en el Fire TV la red es mas lenta que en
-// Node: con 6 s llegaba tarde y devolvia 0 enlaces; con 4,2 s siempre devuelve
-// los que ya resolvio (con sus cabeceras, que es lo que el relay necesita).
-var BUDGET_MS = 8500;
+// Presupuesto duro del provider. El contrato de Nuvio da <60 s por llamada
+// (docs/CONTRATO.md). Con 8,5 s el pipeline moria por topes internos: medido
+// 2026-10-22, cada salto real (pagina del embed, playlist CDN) tarda 2-10 s
+// desde la IP de salida, asi que los topes viejos (4 s embed / 3 s verificar)
+// abortaban todo y el validador descartaba los embeds sin resolver -> 0.
+// 42 s de trabajo + 0,5 s de margen dejan sitio a la verificacion posterior
+// del validador inyectado sin pasar de los 60 s del contrato.
+var BUDGET_MS = 42000;
 
 // Date es parte del lenguaje (no una API de host), con fallback por si no
 // estuviera: sin reloj, el techo real lo pone withTimeout igual.
@@ -566,20 +567,23 @@ function getImdb(tmdbId, type, budgetMs) {
     return Math.min(def, r);
   }
 
-  return tmdbGet("/" + type + "/" + tmdbId + "/external_ids", true, cap(2500) || 1200).then(function (d) {
+  return tmdbGet("/" + type + "/" + tmdbId + "/external_ids", true, cap(4500) || 1200).then(function (d) {
     var imdb = parseImdbFromTmdb(d);
     if (imdb) return imdb;
     if (!cap(2000)) return null;
     return tmdbGet("/" + type + "/" + tmdbId + "?append_to_response=external_ids", false, cap(2000)).then(function (d2) {
       var i2 = parseImdbFromTmdb(d2);
       if (i2) return i2;
-      if (type !== "tv" || !cap(1500)) return null;
-      return tmdbGet("/tv/" + tmdbId, false, cap(1500)).then(function (d3) {
-        var i3 = parseImdbFromTmdb(d3);
-        if (i3) return i3;
-        if (!cap(1500)) return null;
-        return getImdbFromOmdb(tmdbId, type, cap(1500));
-      });
+      if (type === "tv" && cap(1500)) {
+        return tmdbGet("/tv/" + tmdbId, false, cap(1500)).then(function (d3) {
+          var i3 = parseImdbFromTmdb(d3);
+          if (i3) return i3;
+          if (!cap(1500)) return null;
+          return getImdbFromOmdb(tmdbId, type, cap(1500));
+        });
+      }
+      if (!cap(1500)) return null;
+      return getImdbFromOmdb(tmdbId, type, cap(1500));
     });
   });
 }
@@ -879,8 +883,8 @@ function resolveEmbed(embedUrl, family, budgetMs) {
   if (family === "vidhide") target = normalizeVidhideUrl(target);
   var origin = originOf(target);
   var presupuesto = budgetMs && budgetMs > 0 ? budgetMs : 4500;
-  var tEmbed = Math.max(1200, Math.min(4000, presupuesto));
-  var tVerify = Math.max(1000, Math.min(3000, presupuesto));
+  var tEmbed = Math.max(3000, Math.min(12000, presupuesto));
+  var tVerify = Math.max(2500, Math.min(10000, presupuesto));
 
   return fetchText(target, { Referer: "https://embed69.org/", Origin: "https://embed69.org", "User-Agent": UA }, tEmbed)
     .then(function (html) {
@@ -1205,7 +1209,7 @@ function collect(tmdbId, mediaType, season, episode, onPartial) {
   var deadline = t0 ? t0 + BUDGET_MS : 0;
   function restante() { return deadline ? deadline - ahoraMs() : 60000; }
 
-  return getImdb(id, type, Math.min(3000, Math.max(1200, restante() - 2200))).then(function (imdbId) {
+  return getImdb(id, type, Math.min(9000, Math.max(2500, restante() - 2200))).then(function (imdbId) {
     if (!imdbId) return [];
     var variants = idVariants(imdbId, isMovie, s, ep);
     // Solo el primer formato de id trae resultados (verificado 2026-10-02:
@@ -1216,7 +1220,7 @@ function collect(tmdbId, mediaType, season, episode, onPartial) {
     // Las páginas candidatas (fuente x variante) se piden EN PARALELO.
     // Las páginas hoy tardan 6-7 s en responder en conexión fría (el sitio se
     // puso muy lento): se usa casi todo el presupuesto restante.
-    var tPage = Math.max(2500, Math.min(7500, restante() - 500));
+    var tPage = Math.max(2500, Math.min(10000, restante() - 500));
     var tasks = [];
     for (var si = 0; si < SOURCES.length; si++) {
       for (var vi = 0; vi < wanted.length; vi++) {
