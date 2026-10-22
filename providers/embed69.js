@@ -117,35 +117,32 @@ function isAllowedLanguage(lang) {
 })();
 // ===== fin validacion inyectada =====
 
-// embed69 — puerto a JS de lib/data/extractors/providers/embed69_extractor.dart
-// (repo josueluz89/scraperstv-providers) al formato que ejecuta el motor de
-// MasterScrap: CommonJS `module.exports = { getStreams }`, solo fetch + JSON +
-// RegExp + String/Array/Promise/setTimeout/AbortController. Sin npm, sin cheerio,
-// sin crypto, sin Buffer, sin DOMParser, sin URL.
+// ===========================================================================
+// embed69 — REESCRITURA LIMPIA (2026-10-22, por orden del dueño: lo que esta
+// mal se borra y se escribe de nuevo, nada de parches encima).
 //
-// Que hace el extractor original (y este puerto):
-//   1. tmdb_id -> imdb_id (TMDB external_ids, detalle, y fallback a OMDB por
-//      titulo+anio, porque TMDB no siempre tiene el imdb mapeado en series).
-//   2. Con el imdb arma variantes de id para series (tt123-1x01, tt123-1x1,
-//      tt123-01x01, tt123-1-01, tt123-1-1) y pide la pagina del embed
-//      (serieskao.top/vidurl/<id>/ y embed69.org/f/<id>/, que hoy sirven el
-//      mismo motor Embed69; xupalace.org/video/<id>/ redirige al segundo).
-//   3. Esa pagina trae `dataLink` (JSON con los embeds CIFRADOS) y un
-//      proof-of-work: hay que encontrar el nonce tal que
-//      sha256(POW_CHALLENGE + nonce) empiece con N ceros, y la clave AES-256
-//      es sha256(POW_CHALLENGE + nonce + POW_SALT) (32 bytes crudos, igual que
-//      el PHP/hash(...,true) del sitio original).
-//   4. Cada `link` viene en base64: IV = primeros 16 bytes, ciphertext = resto,
-//      AES-256-CBC con padding PKCS7. Al descifrar sale la URL del servidor.
-//   5. Se descartan voe/rapidvideo (igual que el Dart: servidoresFiltrados) y
-//      se reescriben los dominios que rotaron (hglink.to -> vibuxer.com,
-//      filelions.to -> callistanise.com).
-//   6. Se resuelve el embed a un .m3u8 reproducible.
+// Que hace (igual que el extractor Dart original del que salio este provider):
+//   1. tmdb_id -> imdb_id (TMDB, con OMDB como ultimo respaldo).
+//   2. Con el imdb pide la pagina del embed a embed69.org / serieskao.top
+//      (mismo motor Embed69 en las dos).
+//   3. La pagina trae los embeds CIFRADOS (`dataLink`) y un proof-of-work:
+//      nonce tal que sha256(POW_CHALLENGE + nonce) empieza con N ceros, y la
+//      clave AES-256 es sha256(POW_CHALLENGE + nonce + POW_SALT).
+//   4. Cada link se descifra (AES-256-CBC, IV = primeros 16 bytes) y sale la
+//      URL real del servidor (streamwish / vidhide).
+//   5. Cada embed se resuelve a su .m3u8 directo y SOLO eso se devuelve: los
+//      embeds sin resolver los descarta despues el validador inyectado.
 //
-// PECULIARIDAD DE ESTE PUERTO: el contrato no permite crypto ni Buffer, asi que
-// SHA-256 y AES-256-CBC estan implementados a mano en JS puro (solo numeros y
-// operadores de 32 bits). Estan verificados contra `node:crypto` (ver notas al
-// final del archivo).
+// Estructura: 4 fases en cadena (ids -> pagina -> descifrado -> resolucion),
+// un UNICO presupuesto de tiempo (PRESUPUESTO + reloj) del que cuelga cada
+// peticion, y una capa HTTP que nunca rechaza: ningun aborto o error de red
+// puede matar la cadena; cada fase degrada a su fallback o a [].
+//
+// Se conserva TAL CUAL la matematica probada contra el sitio real y contra
+// node:crypto: SHA-256 puro, AES-256-CBC puro, PoW, parseo de dataLink y de
+// candidatos del player, mapas de idioma/calidad y listas de hosts. Lo que se
+// reescribio desde cero es la orquestacion alrededor de esa matematica.
+// ===========================================================================
 
 var UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -155,19 +152,74 @@ var TMDB_BASE = "https://api.themoviedb.org/3";
 var OMDB_KEY = "5b0e8a3e";
 var OMDB_BASE = "http://www.omdbapi.com/";
 
-// Fuentes de la pagina del embed (Dart: _kBaseUrlSeriesKao / _kBaseUrlXupalace).
-// xupalace.org hoy responde 301 hacia embed69.org: se eliminó por redundante.
-// serieskao.top y embed69.org sirven el mismo motor/contenido; se piden en
-// paralelo y la primera que traiga embeds gana.
+// Las dos fuentes sirven el mismo motor/contenido; se piden en carrera y la
+// primera que traiga entradas gana (xupalace.org redirige a embed69.org, por
+// eso no esta: seria pedir lo mismo dos veces).
 var SOURCES = [
   { url: "https://embed69.org/f/", ref: "https://embed69.org/", org: "https://embed69.org" },
   { url: "https://serieskao.top/vidurl/", ref: "https://serieskao.top/", org: "https://serieskao.top" },
 ];
 
 // ---------------------------------------------------------------------------
-// utilidades de bajo nivel (sin Buffer / sin TextEncoder / sin URL)
+// Presupuesto UNICO, diseñado contra el contrato y la red real medida:
+//   - Contrato Nuvio: < 60 s por llamada (docs/CONTRATO.md). Total interno de
+//     42 s: quedan ~17 s para la verificacion del validador inyectado.
+//   - Medido 2026-10-22 desde la IP de salida: TMDB tarda 1,5-3,2 s por
+//     peticion; la pagina del embed 1,5-7 s; un embed 2-10 s; verificar un
+//     playlist CDN 3,6-9,3 s. Los topes viejos (4 s embed / 3 s verificar /
+//     8,5 s total / 2,5 s a TMDB) abortaban todo: por eso el provider daba 0.
+// Cada fase tiene su sub-tope y NINGUNA peticion puede pasarse del tiempo que
+// le quede al reloj: si una fase agota su sub-tope, la cadena sigue con lo
+// que haya (fallback o vacio), nunca revienta.
 // ---------------------------------------------------------------------------
 
+var PRESUPUESTO = {
+  total: 42000,     // techo de trabajo del provider por llamada
+  imdb: 12000,      // fase 1 completa (TMDB en paralelo + OMDB)
+  paginas: 12000,   // fase 2 completa (todas las variantes x fuentes)
+  pagina: 10000,    // una sola peticion de pagina
+  embed: 12000,     // una sola peticion de pagina de embed (o de su iframe)
+  verificar: 10000, // una sola verificacion de playlist
+};
+
+// Reloj de la llamada: un solo deadline del que cuelgan fase y peticiones.
+// Sin Date (no deberia pasar: es lenguaje base), restante() devuelve el total
+// y el techo duro lo sigue poniendo el temporizador de conPlazo().
+function ahoraMs() {
+  return (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
+}
+
+function crearReloj(finAbs) {
+  return {
+    fin: finAbs,
+    restante: function () {
+      var n = ahoraMs();
+      return n ? Math.max(0, this.fin - n) : PRESUPUESTO.total;
+    },
+    // Milisegundos utiles para una peticion con tope `cap`: 0 si ya no queda
+    // tiempo util (la fase que lo recibe lo interpreta como "saltar").
+    tope: function (cap) {
+      var r = this.restante();
+      if (r <= 300) return 0;
+      return Math.min(cap, r);
+    },
+    // Reloj hijo: vence con el padre o a los `cap` ms, lo que pase primero.
+    hijo: function (cap) {
+      var n = ahoraMs();
+      return crearReloj(n ? Math.min(this.fin, n + cap) : this.fin);
+    },
+  };
+}
+
+function nuevoReloj() {
+  var n = ahoraMs();
+  return crearReloj(n ? n + PRESUPUESTO.total : 0);
+}
+
+// ===========================================================================
+// Utilidades puras y cripto (SIN CAMBIOS: verificados byte a byte contra
+// node:crypto y contra los dataLink reales del sitio)
+// ===========================================================================
 function utf8Encode(str) {
   var out = [];
   var s = String(str);
@@ -445,55 +497,6 @@ function aes256CbcDecrypt(cipherBytes, key, iv) {
   }
   return out.slice(0, out.length - pad);
 }
-
-// ---------------------------------------------------------------------------
-// HTTP
-// ---------------------------------------------------------------------------
-
-function fetchText(url, headers, timeoutMs) {
-  var ms = timeoutMs || 20000;
-  var ctrl = null, signal = null;
-  try {
-    if (typeof AbortController !== "undefined") {
-      ctrl = new AbortController();
-      signal = ctrl.signal;
-      if (typeof setTimeout !== "undefined") {
-        (function (c) {
-          setTimeout(function () {
-            try { c.abort(); } catch (e) {}
-          }, ms);
-        })(ctrl);
-      }
-    }
-  } catch (e) { ctrl = null; }
-
-  var h = Object.assign(
-    {
-      "User-Agent": UA,
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
-    },
-    headers || {}
-  );
-  var req = { headers: h, redirect: "follow" };
-  if (signal) req.signal = signal;
-
-  return fetch(url, req).then(function (res) {
-    if (!res.ok) throw new Error("HTTP " + res.status + " " + url);
-    return res.text();
-  });
-}
-
-function fetchJsonSafe(url, headers, timeoutMs) {
-  return fetchText(url, headers, timeoutMs).then(function (raw) {
-    try { return JSON.parse(raw); } catch (e) { return null; }
-  }).catch(function () { return null; });
-}
-
-// ---------------------------------------------------------------------------
-// TMDB / OMDB -> imdb_id
-// ---------------------------------------------------------------------------
-
 function normalizeImdb(raw) {
   if (raw === null || raw === undefined) return null;
   var s = String(raw).trim();
@@ -517,79 +520,145 @@ function parseImdbFromTmdb(data) {
   return null;
 }
 
-// Presupuesto duro del provider. El contrato de Nuvio da <60 s por llamada
-// (docs/CONTRATO.md). Con 8,5 s el pipeline moria por topes internos: medido
-// 2026-10-22, cada salto real (pagina del embed, playlist CDN) tarda 2-10 s
-// desde la IP de salida, asi que los topes viejos (4 s embed / 3 s verificar)
-// abortaban todo y el validador descartaba los embeds sin resolver -> 0.
-// 42 s de trabajo + 0,5 s de margen dejan sitio a la verificacion posterior
-// del validador inyectado sin pasar de los 60 s del contrato.
-var BUDGET_MS = 42000;
+// ---------------------------------------------------------------------------
+// HTTP: una sola puerta, y NUNCA rechaza. Toda peticion resuelve con el texto
+// o con null (HTTP no-2xx, aborto por tiempo, red caida, lo que sea). Asi,
+// por diseño, ningun error de red puede matar la cadena: cada fase recibe
+// null/vacio y decide su fallback.
+// ---------------------------------------------------------------------------
 
-// Date es parte del lenguaje (no una API de host), con fallback por si no
-// estuviera: sin reloj, el techo real lo pone withTimeout igual.
-function ahoraMs() {
-  return (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
-}
-
-function tmdbGet(path, language, timeoutMs) {
-  var url = TMDB_BASE + path + (path.indexOf("?") === -1 ? "?" : "&") + "api_key=" + TMDB_KEY + (language ? "&language=es-MX" : "");
-  return fetchJsonSafe(url, { Accept: "application/json", "User-Agent": UA }, timeoutMs || 15000);
-}
-
-function getImdbFromOmdb(tmdbId, type, timeoutMs) {
-  return tmdbGet("/" + type + "/" + tmdbId, false, timeoutMs || 15000).then(function (data) {
-    if (!data) return null;
-    var title = type === "movie" ? data.title : data.name;
-    if (!title || !String(title).trim()) return null;
-    var dateStr = type === "movie" ? data.release_date : data.first_air_date;
-    var year = dateStr && String(dateStr).length >= 4 ? String(dateStr).substring(0, 4) : null;
-    var omdbUrl =
-      OMDB_BASE + "?apikey=" + OMDB_KEY + "&t=" + encodeURIComponent(title) +
-      "&type=" + (type === "movie" ? "movie" : "series") + (year ? "&y=" + year : "");
-    return fetchJsonSafe(omdbUrl, { Accept: "application/json", "User-Agent": UA }, timeoutMs || 15000).then(function (d) {
-      if (!d || d.Response === "False") return null;
-      return normalizeImdb(d.imdbID);
-    });
-  }).catch(function () { return null; });
-}
-
-// Misma cadena de fallbacks del Dart (external_ids -> detalle -> tv -> OMDB),
-// pero con presupuesto: si se agota el tiempo se corta y devuelve null en vez
-// de comerse la ventana completa de 9 s del motor.
-function getImdb(tmdbId, type, budgetMs) {
-  var t0 = ahoraMs();
-  var deadline = t0 ? t0 + (budgetMs || 3500) : 0;
-  function restante() { return deadline ? deadline - ahoraMs() : 20000; }
-  function cap(def) {
-    var r = restante();
-    if (r < 400) return 0;
-    return Math.min(def, r);
-  }
-
-  return tmdbGet("/" + type + "/" + tmdbId + "/external_ids", true, cap(4500) || 1200).then(function (d) {
-    var imdb = parseImdbFromTmdb(d);
-    if (imdb) return imdb;
-    if (!cap(2000)) return null;
-    return tmdbGet("/" + type + "/" + tmdbId + "?append_to_response=external_ids", false, cap(2000)).then(function (d2) {
-      var i2 = parseImdbFromTmdb(d2);
-      if (i2) return i2;
-      if (type === "tv" && cap(1500)) {
-        return tmdbGet("/tv/" + tmdbId, false, cap(1500)).then(function (d3) {
-          var i3 = parseImdbFromTmdb(d3);
-          if (i3) return i3;
-          if (!cap(1500)) return null;
-          return getImdbFromOmdb(tmdbId, type, cap(1500));
-        });
+function httpText(url, headers, ms) {
+  return new Promise(function (resolve) {
+    var done = false;
+    function fin(v) {
+      if (!done) { done = true; resolve(v); }
+    }
+    var h = {
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
+    };
+    if (headers) {
+      for (var k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k) && headers[k]) h[k] = headers[k];
       }
-      if (!cap(1500)) return null;
-      return getImdbFromOmdb(tmdbId, type, cap(1500));
+    }
+    var req = { headers: h, redirect: "follow" };
+    try {
+      if (typeof AbortController !== "undefined") {
+        var ctrl = new AbortController();
+        req.signal = ctrl.signal;
+        if (typeof setTimeout !== "undefined") {
+          (function (c) {
+            setTimeout(function () { try { c.abort(); } catch (e) {} }, Math.max(1, ms || 10000));
+          })(ctrl);
+        }
+      }
+    } catch (e) {}
+    try {
+      fetch(url, req).then(function (res) {
+        if (!res || !res.ok) { fin(null); return; }
+        res.text().then(fin, function () { fin(null); });
+      }, function () { fin(null); });
+    } catch (e) { fin(null); }
+  });
+}
+
+function httpJson(url, headers, ms) {
+  return httpText(url, headers, ms).then(function (raw) {
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  });
+}
+
+// Resuelve con el primer resultado que cumpla `sirve`; si ninguna promesa
+// sirve, resuelve null cuando TODAS hayan terminado. Las promesas que llegan
+// tarde se ignoran (sus efectos laterales utiles, si los hay, ya ocurrieron).
+function primeroUtil(promesas, sirve) {
+  return new Promise(function (resolve) {
+    var quedan = promesas.length;
+    var listo = false;
+    if (!quedan) { resolve(null); return; }
+    function fallo() {
+      if (!listo && --quedan === 0) { listo = true; resolve(null); }
+    }
+    promesas.forEach(function (p) {
+      Promise.resolve(p).then(function (v) {
+        if (listo) return;
+        if (v && sirve(v)) { listo = true; resolve(v); return; }
+        fallo();
+      }, fallo);
     });
   });
 }
 
 // ---------------------------------------------------------------------------
-// PoW + descifrado de la pagina Embed69
+// Fase 1 — tmdb_id -> imdb_id
+// ---------------------------------------------------------------------------
+
+function tmdbJson(path, conIdioma, fase, cap) {
+  var t = fase.tope(cap);
+  if (!t) return Promise.resolve(null);
+  var url = TMDB_BASE + path + (path.indexOf("?") === -1 ? "?" : "&") + "api_key=" + TMDB_KEY + (conIdioma ? "&language=es-MX" : "");
+  return httpJson(url, { Accept: "application/json", "User-Agent": UA }, t);
+}
+
+// OMDB por titulo+anio (ultimo respaldo: TMDB no siempre trae el imdb
+// mapeado). Recibe el detalle de TMDB ya descargado si lo hay — no se vuelve
+// a pedir — y vale para peliculas Y series por igual.
+function imdbDesdeOmdb(tmdbId, tipo, fase, detalle) {
+  function conDetalle(d) {
+    if (!d) return null;
+    var titulo = tipo === "movie" ? d.title : d.name;
+    if (!titulo || !String(titulo).trim()) return null;
+    var fecha = tipo === "movie" ? d.release_date : d.first_air_date;
+    var anio = fecha && String(fecha).length >= 4 ? String(fecha).substring(0, 4) : null;
+    var t = fase.tope(6000);
+    if (!t) return null;
+    var url = OMDB_BASE + "?apikey=" + OMDB_KEY + "&t=" + encodeURIComponent(titulo) +
+      "&type=" + (tipo === "movie" ? "movie" : "series") + (anio ? "&y=" + anio : "");
+    return httpJson(url, { Accept: "application/json", "User-Agent": UA }, t).then(function (od) {
+      if (!od || od.Response === "False") return null;
+      return normalizeImdb(od.imdbID);
+    });
+  }
+  if (detalle) return conDetalle(detalle);
+  return tmdbJson("/" + tipo + "/" + tmdbId, false, fase, 6000).then(conDetalle);
+}
+
+// Los dos caminos de TMDB se piden EN PARALELO y gana el primero que traiga
+// el imdb: en serie, pedirlos uno tras otro con topes chicos era la muerte
+// (cada peticion tarda ~3 s y el segundo camino ya nacia sin tiempo). Si
+// ninguno lo trae: en series se prueba el detalle plano (cadena del Dart) y
+// al final OMDB, para AMBOS tipos.
+function resolverImdb(tmdbId, tipo, reloj) {
+  var fase = reloj.hijo(PRESUPUESTO.imdb);
+  var detalle = null;
+  function guardarDetalle(d) {
+    if (d && typeof d === "object" && !detalle) detalle = d;
+    return d;
+  }
+  var pExt = tmdbJson("/" + tipo + "/" + tmdbId + "/external_ids", true, fase, 8000)
+    .then(function (d) { return parseImdbFromTmdb(d); });
+  var pDet = tmdbJson("/" + tipo + "/" + tmdbId + "?append_to_response=external_ids", false, fase, 8000)
+    .then(function (d) { return parseImdbFromTmdb(guardarDetalle(d)); });
+
+  return primeroUtil([pExt, pDet], function (v) { return !!v; }).then(function (imdb) {
+    if (imdb) return imdb;
+    var paso = Promise.resolve(null);
+    if (tipo === "tv") {
+      paso = tmdbJson("/tv/" + tmdbId, false, fase, 6000)
+        .then(function (d) { return parseImdbFromTmdb(guardarDetalle(d)); });
+    }
+    return paso.then(function (i3) {
+      if (i3) return i3;
+      return imdbDesdeOmdb(tmdbId, tipo, fase, detalle);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PoW + descifrado de la pagina Embed69 (probado, sin cambios)
 // ---------------------------------------------------------------------------
 
 function extractPowConstants(html) {
@@ -655,7 +724,7 @@ function decryptAesLink(encryptedBase64, key) {
 }
 
 // ---------------------------------------------------------------------------
-// idiomas / calidad
+// Idiomas y calidad (probado, sin cambios)
 // ---------------------------------------------------------------------------
 
 var LANG_MAP = {
@@ -736,7 +805,7 @@ function qualityFromM3u8Body(body) {
 }
 
 // ---------------------------------------------------------------------------
-// resolvers de embed
+// Parseo de la pagina del player: candidatos .m3u8 (probado, sin cambios)
 // ---------------------------------------------------------------------------
 
 function originOf(url) {
@@ -822,15 +891,9 @@ function extractCandidates(html) {
   return candidates;
 }
 
-// Prueba un candidato: lee el playlist y acepta solo si es un HLS real.
-function verifyM3u8(url, referer, timeoutMs) {
-  return fetchText(url, { Referer: referer || originOf(url) + "/", "User-Agent": UA }, timeoutMs || 3500).then(function (body) {
-    if (body && body.indexOf("#EXTM3U") !== -1) return { ok: true, body: body };
-    return { ok: false, body: "" };
-  }).catch(function () {
-    return { ok: false, body: "" };
-  });
-}
+// ---------------------------------------------------------------------------
+// Familias de servidores y reescritura de dominios (probado, sin cambios)
+// ---------------------------------------------------------------------------
 
 var VIDHIDE_HOSTS = ["vidhide", "dintezuvio", "minochinos", "dramiyos", "dhcplay", "smoothpre", "dhtpre",
   "vidspeeder", "moorearn", "travid", "vidhidehub", "vidhidevip", "vidhidepre", "kinoger", "movearnpre",
@@ -875,89 +938,8 @@ function normalizeVidhideUrl(url) {
   return u;
 }
 
-// Resuelve un embed (streamwish/vidhide family) a un .m3u8 reproducible.
-// `budgetMs` es el tiempo que le queda al provider: ninguna peticion de aca
-// puede pasarse de ese presupuesto (el motor corta a los ~9 s).
-function resolveEmbed(embedUrl, family, budgetMs) {
-  var target = rewriteHost(embedUrl);
-  if (family === "vidhide") target = normalizeVidhideUrl(target);
-  var origin = originOf(target);
-  var presupuesto = budgetMs && budgetMs > 0 ? budgetMs : 4500;
-  var tEmbed = Math.max(3000, Math.min(12000, presupuesto));
-  var tVerify = Math.max(2500, Math.min(10000, presupuesto));
-
-  return fetchText(target, { Referer: "https://embed69.org/", Origin: "https://embed69.org", "User-Agent": UA }, tEmbed)
-    .then(function (html) {
-      var candidates = extractCandidates(html);
-      // algunos hosts sirven un iframe intermedio
-      if (!candidates.length) {
-        var iframe = html.match(/<iframe[^>]*src=["']([^"']+)["']/i);
-        if (iframe) {
-          var iu = iframe[1];
-          if (iu.indexOf("//") === 0) iu = "https:" + iu;
-          if (iu.indexOf("/") === 0) iu = originOf(target) + iu;
-          return fetchText(iu, { Referer: target, "User-Agent": UA }, tEmbed).then(function (h2) {
-            return extractCandidates(h2);
-          }).catch(function () { return []; });
-        }
-      }
-      return candidates;
-    })
-    .then(function (candidates) {
-      if (!candidates || !candidates.length) return null;
-      var abs = [];
-      for (var i = 0; i < candidates.length; i++) {
-        var c = candidates[i];
-        if (c.indexOf("//") === 0) c = "https:" + c;
-        else if (c.indexOf("/") === 0) c = origin + c;
-        else if (c.indexOf("http") !== 0) c = origin + "/" + c;
-        if (abs.indexOf(c) === -1) abs.push(c);
-      }
-      // Se comprueban como mucho los DOS primeros candidatos (los que prioriza
-      // el jwplayer del host) y EN PARALELO. Gana la primera comprobacion que
-      // conteste: esperar a la mas lenta era lo que se comia los 9 s.
-      var top = abs.slice(0, 2);
-      var fallback = { url: abs[0], quality: guessQualityFromUrl(abs[0], family) || "Digital", verified: false };
-      if (top.length === 1) {
-        return verifyM3u8(top[0], target, tVerify).then(function (v) {
-          if (v && v.ok) {
-            return { url: top[0], quality: guessQualityFromUrl(top[0], family) || qualityFromM3u8Body(v.body) || "Digital", verified: true };
-          }
-          return fallback;
-        });
-      }
-      return new Promise(function (resolve) {
-        var listo = false;
-        var pendientes = top.length;
-        for (var n = 0; n < top.length; n++) {
-          (function (idx) {
-            verifyM3u8(top[idx], target, tVerify).then(function (v) {
-              if (listo) return;
-              if (v && v.ok) {
-                listo = true;
-                resolve({
-                  url: top[idx],
-                  quality: guessQualityFromUrl(top[idx], family) || qualityFromM3u8Body(v.body) || "Digital",
-                  verified: true,
-                });
-                return;
-              }
-              if (--pendientes === 0) {
-                listo = true;
-                resolve(fallback);
-              }
-            });
-          })(n);
-        }
-      });
-    })
-    .catch(function () {
-      return null;
-    });
-}
-
 // ---------------------------------------------------------------------------
-// parser legacy de xupalace (go_to_playerVast / bloques <li>)
+// Parser legacy de xupalace (formato viejo; probado, sin cambios)
 // ---------------------------------------------------------------------------
 
 function extractEnlacesXupalace(html) {
@@ -1013,12 +995,8 @@ function extractEnlacesXupalace(html) {
   return enlaces;
 }
 
-// ---------------------------------------------------------------------------
-// pipeline
-// ---------------------------------------------------------------------------
-
 // Servidores que el extractor Dart descarta a proposito (voe / rapidvideo:
-// no son reproducibles por el player de la app, ver servidoresFiltrados).
+// el player de la app no los reproduce, ver servidoresFiltrados del Dart).
 var SERVIDORES_DESCARTADOS = ["voe", "rapidvideo"];
 
 function idVariants(imdbId, isMovie, season, episode) {
@@ -1035,100 +1013,6 @@ function idVariants(imdbId, isMovie, season, episode) {
     imdbId + "-" + s + "-" + e,
   ];
 }
-
-// Descarga la pagina del embed y devuelve [{servidor, url, idioma}] ya
-// descifrados (o [] si no hay pagina / no hay dataLink / el PoW no se resuelve).
-function fetchFromSource(source, idCompleto, timeoutMs) {
-  var url = source.url + idCompleto + "/";
-  return fetchText(url, {
-    "X-Requested-With": "XMLHttpRequest",
-    Referer: source.ref,
-    Origin: source.org,
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-    "Accept-Encoding": "identity",
-  }, timeoutMs || 4000).then(function (html) {
-    if (!html) return [];
-
-    var dataLink = extractDataLink(html);
-    if (dataLink && dataLink.length) {
-      var pow = extractPowConstants(html);
-      if (!pow.challenge) return [];
-      var nonce = solvePow(pow.challenge, pow.difficulty);
-      if (nonce === null) return [];
-      var key = aesKeyBytes(pow.challenge, nonce, pow.salt || "");
-      var out = [];
-      for (var i = 0; i < dataLink.length; i++) {
-        var item = dataLink[i] || {};
-        var idioma = normalizarIdioma(item.video_language || "DESCONOCIDO");
-        var embeds = item.sortedEmbeds;
-        if (!embeds || !embeds.length) continue;
-        for (var j = 0; j < embeds.length; j++) {
-          var embed = embeds[j] || {};
-          var servidor = String(embed.servername || "").toLowerCase();
-          if (SERVIDORES_DESCARTADOS.indexOf(servidor) !== -1) continue;
-          var link = String(embed.link || "");
-          if (!link) continue;
-          var urlReal = decryptAesLink(link, key);
-          if (!urlReal) continue;
-          out.push({
-            servidor: servidor || "desconocido",
-            url: rewriteHost(urlReal),
-            idioma: idioma,
-          });
-        }
-      }
-      return out;
-    }
-
-    // Sin dataLink: parser legacy de xupalace (go_to_playerVast).
-    var enlaces = extractEnlacesXupalace(html);
-    var legacy = [];
-    for (var n = 0; n < enlaces.length; n++) {
-      var e = enlaces[n];
-      var srv = String(e.servidor || "").toLowerCase();
-      var u = e.url || "";
-      if (!u) continue;
-      var esSW = srv === "streamwish" || u.indexOf("hglink.to") !== -1 || u.indexOf("streamwish") !== -1 || u.indexOf("vibuxer.com") !== -1;
-      var esVH = srv === "vidhide" || u.indexOf("vidhide") !== -1 || u.indexOf("filelions") !== -1 || u.indexOf("callistanise") !== -1;
-      if (!esSW && !esVH) continue;
-      legacy.push({
-        servidor: esSW ? "streamwish" : "vidhide",
-        url: rewriteHost(u),
-        idioma: e.idioma || "es_MX",
-      });
-    }
-    return legacy;
-  }).catch(function () {
-    return [];
-  });
-}
-
-// Convierte los embeds descifrados en streams PUBLICABLES de inmediato (la URL
-// es el propio embed, con sus headers Referer/Origin): eso garantiza que, si se
-// agota el presupuesto, el motor igual tenga enlaces que pasar por su relay.
-function baseStreams(entries) {
-  var out = [];
-  var seen = {};
-  for (var i = 0; i < entries.length; i++) {
-    var e = entries[i];
-    var fam = familyOf(e.servidor, e.url);
-    if (!fam) continue;
-    var k = fam + "|" + e.url + "|" + e.idioma;
-    if (seen[k]) continue;
-    seen[k] = true;
-    var org = originOf(e.url);
-    out.push({
-      title: "Embed69 · " + (fam === "streamwish" ? "Streamwish" : "Vidhide"),
-      quality: guessQualityFromUrl(e.url, fam) || "Digital",
-      language: idiomaLabel(e.idioma),
-      url: e.url,
-      headers: { Referer: org + "/", Origin: org, "User-Agent": UA },
-      _family: fam,
-    });
-  }
-  return ordenar(out);
-}
-
 function ordenar(streams) {
   var order = { Latino: 0, "Español": 1, "Inglés": 2, Subtitulado: 3 };
   return streams.slice(0).sort(function (a, b) {
@@ -1151,41 +1035,216 @@ function limpiar(streams) {
   return out;
 }
 
-// Intenta mejorar cada embed con su .m3u8 directo, todo EN PARALELO. `sink` es
-// la copia que se va actualizando a medida que cada embed se resuelve, para que
-// el corte por tiempo devuelva lo ya resuelto y no la lista original.
-function resolveAll(base, presupuestoMs, sink) {
-  var tasks = [];
-  for (var i = 0; i < base.length; i++) {
-    (function (item, idx) {
-      tasks.push(
-        resolveEmbed(item.url, item._family, presupuestoMs).then(function (res) {
-          if (!res || !res.url) return item;
-          var org = originOf(res.url);
-          var mejor = {
-            title: item.title,
-            quality: res.quality || item.quality,
-            language: item.language,
-            url: res.url,
-            headers: { Referer: org + "/", Origin: org, "User-Agent": UA },
-            _family: item._family,
-          };
-          if (sink) sink[idx] = mejor;
-          return mejor;
-        }).catch(function () { return item; })
-      );
-    })(base[i], i);
+// ---------------------------------------------------------------------------
+// Fase 2+3 — pagina del embed y descifrado de sus enlaces
+// ---------------------------------------------------------------------------
+
+// Convierte el HTML de la pagina en entradas [{servidor, url, idioma}] ya
+// descifradas. Sin dataLink cae al parser legacy de xupalace (formato viejo,
+// hoy inactivo pero inofensivo si el sitio volviera a el).
+function procesarPagina(html) {
+  var dataLink = extractDataLink(html);
+  if (dataLink && dataLink.length) {
+    var pow = extractPowConstants(html);
+    if (!pow.challenge) return [];
+    var nonce = solvePow(pow.challenge, pow.difficulty);
+    if (nonce === null) return [];
+    var key = aesKeyBytes(pow.challenge, nonce, pow.salt || "");
+    var out = [];
+    for (var i = 0; i < dataLink.length; i++) {
+      var item = dataLink[i] || {};
+      var idioma = normalizarIdioma(item.video_language || "DESCONOCIDO");
+      var embeds = item.sortedEmbeds;
+      if (!embeds || !embeds.length) continue;
+      for (var j = 0; j < embeds.length; j++) {
+        var embed = embeds[j] || {};
+        var servidor = String(embed.servername || "").toLowerCase();
+        if (SERVIDORES_DESCARTADOS.indexOf(servidor) !== -1) continue;
+        var link = String(embed.link || "");
+        if (!link) continue;
+        var urlReal = decryptAesLink(link, key);
+        if (!urlReal) continue;
+        out.push({ servidor: servidor || "desconocido", url: rewriteHost(urlReal), idioma: idioma });
+      }
+    }
+    return out;
   }
-  return Promise.all(tasks);
+
+  var enlaces = extractEnlacesXupalace(html);
+  var legacy = [];
+  for (var n = 0; n < enlaces.length; n++) {
+    var e = enlaces[n];
+    var srv = String(e.servidor || "").toLowerCase();
+    var u = e.url || "";
+    if (!u) continue;
+    var esSW = srv === "streamwish" || u.indexOf("hglink.to") !== -1 || u.indexOf("streamwish") !== -1 || u.indexOf("vibuxer.com") !== -1;
+    var esVH = srv === "vidhide" || u.indexOf("vidhide") !== -1 || u.indexOf("filelions") !== -1 || u.indexOf("callistanise") !== -1;
+    if (!esSW && !esVH) continue;
+    legacy.push({ servidor: esSW ? "streamwish" : "vidhide", url: rewriteHost(u), idioma: e.idioma || "es_MX" });
+  }
+  return legacy;
 }
 
-// Carrera contra el reloj que limpia el timer (importante en Node, donde un
-// setTimeout pendiente mantiene vivo el proceso).
-function conPlazo(promise, ms) {
+function pedirFuente(fuente, idCompleto, fase) {
+  var t = fase.tope(PRESUPUESTO.pagina);
+  if (!t) return Promise.resolve([]);
+  return httpText(fuente.url + idCompleto + "/", {
+    "X-Requested-With": "XMLHttpRequest",
+    Referer: fuente.ref,
+    Origin: fuente.org,
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Accept-Encoding": "identity",
+  }, t).then(function (html) {
+    return html ? procesarPagina(html) : [];
+  });
+}
+
+// Variantes de id en orden (la primera es la que el sitio usa hoy; las demas
+// quedan por si rotara el formato). Por variante, las fuentes van en carrera
+// y gana la primera CON entradas: no se espera a la fuente lenta.
+function buscarEntradas(imdbId, esMovie, season, episode, reloj) {
+  var fase = reloj.hijo(PRESUPUESTO.paginas);
+  var variantes = idVariants(imdbId, esMovie, season, episode);
+  var i = 0;
+  function siguiente() {
+    if (i >= variantes.length || fase.tope(PRESUPUESTO.pagina) === 0) return Promise.resolve([]);
+    var v = variantes[i++];
+    var intentos = SOURCES.map(function (fuente) { return pedirFuente(fuente, v, fase); });
+    return primeroUtil(intentos, function (arr) { return arr && arr.length > 0; }).then(function (ganadora) {
+      if (ganadora && ganadora.length) return ganadora;
+      return siguiente();
+    });
+  }
+  return siguiente();
+}
+
+// ---------------------------------------------------------------------------
+// Fase 4 — resolucion de cada embed a su .m3u8 directo
+// ---------------------------------------------------------------------------
+
+// Un candidato solo se da por bueno si su cuerpo es un playlist HLS real.
+function verificarCandidato(url, referer, reloj) {
+  var t = reloj.tope(PRESUPUESTO.verificar);
+  if (!t) return Promise.resolve({ ok: false, body: "" });
+  return httpText(url, { Referer: referer }, t).then(function (body) {
+    return body && body.indexOf("#EXTM3U") !== -1 ? { ok: true, body: body } : { ok: false, body: "" };
+  });
+}
+
+// Resuelve UNA entrada a su stream final {title, quality, language, url,
+// headers} o a null. Se comprueban como mucho los dos primeros candidatos
+// (los que prioriza el jwplayer del host) EN PARALELO y gana el primero que
+// verifique; si ninguno verifica, se devuelve el primer candidato tal cual y
+// que decida el validador inyectado (es su trabajo, no negociable).
+function resolverEmbed(entrada, reloj) {
+  var fam = familyOf(entrada.servidor, entrada.url);
+  if (!fam) return Promise.resolve(null);
+  var target = rewriteHost(entrada.url);
+  if (fam === "vidhide") target = normalizeVidhideUrl(target);
+  var origin = originOf(target);
+  var t = reloj.tope(PRESUPUESTO.embed);
+  if (!t) return Promise.resolve(null);
+
+  return httpText(target, { Referer: "https://embed69.org/", Origin: "https://embed69.org" }, t).then(function (html) {
+    if (!html) return null;
+    var candidates = extractCandidates(html);
+    if (candidates.length) return candidates;
+    // Algunos hosts sirven primero un iframe intermedio.
+    var iframe = html.match(/<iframe[^>]*src=["']([^"']+)["']/i);
+    if (!iframe) return [];
+    var iu = iframe[1];
+    if (iu.indexOf("//") === 0) iu = "https:" + iu;
+    else if (iu.indexOf("/") === 0) iu = origin + iu;
+    var t2 = reloj.tope(PRESUPUESTO.embed);
+    if (!t2) return [];
+    return httpText(iu, { Referer: target }, t2).then(function (h2) {
+      return h2 ? extractCandidates(h2) : [];
+    });
+  }).then(function (candidates) {
+    if (!candidates || !candidates.length) return null;
+    var abs = [];
+    for (var i = 0; i < candidates.length; i++) {
+      var c = candidates[i];
+      if (c.indexOf("//") === 0) c = "https:" + c;
+      else if (c.indexOf("/") === 0) c = origin + c;
+      else if (c.indexOf("http") !== 0) c = origin + "/" + c;
+      if (abs.indexOf(c) === -1) abs.push(c);
+    }
+    if (!abs.length) return null;
+    var sinVerificar = { url: abs[0], quality: guessQualityFromUrl(abs[0], fam) || "Digital" };
+    var top = abs.slice(0, 2);
+    return new Promise(function (resolve) {
+      var listo = false;
+      var quedan = top.length;
+      top.forEach(function (cand) {
+        verificarCandidato(cand, target, reloj).then(function (v) {
+          if (listo) return;
+          if (v && v.ok) {
+            listo = true;
+            resolve({ url: cand, quality: guessQualityFromUrl(cand, fam) || qualityFromM3u8Body(v.body) || "Digital" });
+            return;
+          }
+          if (--quedan === 0) { listo = true; resolve(sinVerificar); }
+        });
+      });
+    });
+  }).then(function (res) {
+    if (!res || !res.url) return null;
+    var org = originOf(res.url);
+    return {
+      title: "Embed69 · " + (fam === "streamwish" ? "Streamwish" : "Vidhide"),
+      quality: res.quality || "Digital",
+      language: idiomaLabel(entrada.idioma),
+      url: res.url,
+      headers: { Referer: org + "/", Origin: org, "User-Agent": UA },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline completo
+// ---------------------------------------------------------------------------
+
+// Solo entran a resolverse las entradas de familias conocidas, sin duplicar.
+function entradasUtiles(entradas) {
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < entradas.length; i++) {
+    var e = entradas[i];
+    if (!familyOf(e.servidor, e.url)) continue;
+    var k = e.url + "|" + e.idioma;
+    if (seen[k]) continue;
+    seen[k] = true;
+    out.push(e);
+  }
+  return out;
+}
+
+// Todas las resoluciones en paralelo; cada una que termina escribe su hueco
+// del sink, para que un corte por tiempo devuelva lo ya resuelto.
+function resolverTodos(utiles, reloj, sink) {
+  var tareas = utiles.map(function (entrada, idx) {
+    return resolverEmbed(entrada, reloj).then(function (stream) {
+      if (stream) sink[idx] = stream;
+      return stream;
+    });
+  });
+  return Promise.all(tareas);
+}
+
+function compactar(arr) {
+  var out = [];
+  for (var i = 0; i < arr.length; i++) if (arr[i]) out.push(arr[i]);
+  return out;
+}
+
+// Carrera contra el deadline del reloj: es el UNICO techo exterior de la
+// llamada. Al cortar devuelve lo que el sink ya tenga resuelto.
+function conPlazo(promise, reloj, alCortar) {
   if (typeof setTimeout === "undefined") return promise;
   var timer = null;
   var corte = new Promise(function (res) {
-    timer = setTimeout(function () { res(null); }, Math.max(0, ms));
+    timer = setTimeout(function () { res(alCortar()); }, Math.max(0, reloj.restante()));
   });
   return Promise.race([promise, corte]).then(function (v) {
     if (timer !== null && typeof clearTimeout !== "undefined") {
@@ -1195,153 +1254,68 @@ function conPlazo(promise, ms) {
   });
 }
 
-// onPartial se llama en cuanto hay algo publicable (embeds con sus headers),
-// asi withTimeout nunca devuelve [] si ya habia enlaces.
-function collect(tmdbId, mediaType, season, episode, onPartial) {
+function ejecutar(tmdbId, mediaType, season, episode, reloj, sink) {
   var id = parseInt(tmdbId, 10);
   if (!id || id <= 0) return Promise.resolve([]);
-  var isMovie = mediaType !== "tv" && mediaType !== "series" && mediaType !== "anime";
-  var type = isMovie ? "movie" : "tv";
+  // Contrato Nuvio: 'movie' | 'series' | 'anime' (anime se busca como tv en
+  // TMDB, igual que hacen los demas providers).
+  var esMovie = mediaType !== "tv" && mediaType !== "series" && mediaType !== "anime";
+  var tipo = esMovie ? "movie" : "tv";
   var s = parseInt(season, 10) || 1;
   var ep = parseInt(episode, 10) || 1;
 
-  var t0 = ahoraMs();
-  var deadline = t0 ? t0 + BUDGET_MS : 0;
-  function restante() { return deadline ? deadline - ahoraMs() : 60000; }
-
-  return getImdb(id, type, Math.min(9000, Math.max(2500, restante() - 2200))).then(function (imdbId) {
+  return resolverImdb(id, tipo, reloj).then(function (imdbId) {
     if (!imdbId) return [];
-    var variants = idVariants(imdbId, isMovie, s, ep);
-    // Solo el primer formato de id trae resultados (verificado 2026-10-02:
-    // la segunda variante siempre viene vacía). Pedir más variantes en
-    // paralelo solo quema presupuesto de tiempo.
-    var wanted = variants.slice(0, 1);
-
-    // Las páginas candidatas (fuente x variante) se piden EN PARALELO.
-    // Las páginas hoy tardan 6-7 s en responder en conexión fría (el sitio se
-    // puso muy lento): se usa casi todo el presupuesto restante.
-    var tPage = Math.max(2500, Math.min(10000, restante() - 500));
-    var tasks = [];
-    for (var si = 0; si < SOURCES.length; si++) {
-      for (var vi = 0; vi < wanted.length; vi++) {
-        tasks.push(fetchFromSource(SOURCES[si], wanted[vi], tPage));
-      }
-    }
-
-    return Promise.all(tasks).then(function (list) {
-      var entries = null;
-      // Prioridad: primer formato de id, y dentro de el, fuente 1, 2, 3.
-      for (var v = 0; v < wanted.length && !entries; v++) {
-        for (var q = 0; q < SOURCES.length && !entries; q++) {
-          var item = list[q * wanted.length + v];
-          if (item && item.length) entries = item;
-        }
-      }
-      if (!entries) return [];
-
-      var base = baseStreams(entries);
-      if (!base.length) return [];
-
-      // Ya hay algo devolvible: se publica para que el techo de tiempo no lo
-      // tire, sin esperar a la resolucion de los .m3u8.
-      if (onPartial) onPartial(limpiar(base));
-
-      var falta = restante() - 300;
-      if (falta < 1000) return limpiar(base);
-
-      // `parcial` se va llenando con lo que ya se resolvio a m3u8; si se corta
-      // por tiempo se devuelve eso (y los embeds sin resolver tal cual).
-      var parcial = base.slice(0);
-      return conPlazo(resolveAll(base, falta, parcial), falta).then(function (r) {
-        return limpiar(r || parcial);
+    return buscarEntradas(imdbId, esMovie, s, ep, reloj).then(function (entradas) {
+      var utiles = entradasUtiles(entradas || []);
+      if (!utiles.length) return [];
+      for (var i = 0; i < utiles.length; i++) sink.push(null);
+      return resolverTodos(utiles, reloj, sink).then(function () {
+        return limpiar(ordenar(compactar(sink)));
       });
     });
-  });
+  }).catch(function () { return []; });
 }
 
-// Igual que src/masters/index.js y poseidon.js: techo de tiempo duro para que
-// el motor nunca quede esperando. Si se cumple el plazo se devuelve lo que ya
-// se haya resuelto (en vez de tirar todo a la basura).
-function withTimeout(promise, ms, fallback) {
-  if (typeof setTimeout === "undefined") return promise;
-  var timer = null;
-  var timeout = new Promise(function (res) {
-    timer = setTimeout(function () {
-      res(fallback ? fallback() : []);
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).then(function (v) {
-    if (timer !== null && typeof clearTimeout !== "undefined") {
-      try { clearTimeout(timer); } catch (e) {}
-    }
-    return v;
-  });
-}
-
-var ULTIMO_RESULTADO = [];
-
+// getStreams NUNCA rechaza y NUNCA se pasa del presupuesto: devuelve los
+// streams resueltos, o lo resuelto hasta el corte, o [].
 function getStreams(tmdbId, mediaType, season, episode) {
-  ULTIMO_RESULTADO = [];
-  var run = collect(tmdbId, mediaType, season, episode, function (parcial) {
-    ULTIMO_RESULTADO = parcial || [];
-  })
-    .then(function (streams) {
-      if (streams && streams.length) ULTIMO_RESULTADO = streams;
-      return ULTIMO_RESULTADO || [];
-    })
-    .catch(function () {
-      return ULTIMO_RESULTADO || [];
-    });
-  // Techos: BUDGET_MS de trabajo interno + 500 ms de margen (el motor corta a
-  // los ~9 s, y con esto el provider responde siempre antes de 9 s).
-  return withTimeout(run, BUDGET_MS + 500, function () {
-    return ULTIMO_RESULTADO || [];
-  }).catch(function () {
-    return [];
-  });
+  var reloj = nuevoReloj();
+  var sink = [];
+  var trabajo = ejecutar(tmdbId, mediaType, season, episode, reloj, sink);
+  return conPlazo(trabajo, reloj, function () {
+    return limpiar(ordenar(compactar(sink)));
+  }).catch(function () { return []; });
 }
 
 module.exports = { getStreams };
 
-// ─── Que quedo FUERA del puerto y por que ───────────────────────────────────
+
+// ─── Que quedo FUERA y por que ─────────────────────────────────────────────
 // 1. voe y rapidvideo: el Dart los descarta a proposito (servidoresFiltrados)
 //    porque el player de la app no los reproduce; aca se descartan igual.
-// 2. El parser legacy de xupalace (go_to_playerVast / bloques <li>) esta
-//    portado como fallback, pero xupalace.org hoy responde 301 hacia
-//    embed69.org y esa pagina ya no trae esos enlaces: se conserva por si la
-//    fuente vuelve al formato viejo, no porque hoy aporte streams.
-// 3. DescargaEmbeds: el Dart solo usa `sortedEmbeds` (los `downloadEmbeds`
-//    no se emiten como stream), igual aca.
-// 4. La calidad "Digital" del Dart se reemplaza por la calidad real (etiquetas
-//    del urlset tipo _,l,n,h, o RESOLUTION del master.m3u8). Ese dato no
-//    existia en el Dart porque la app recien lo calculaba al reproducir.
-// 5. No se descargan segmentos ni playlists de variantes: solo se verifica que
-//    el master devuelva #EXTM3U. Los headers Referer/Origin se devuelven en
-//    cada stream para que el motor/relay los aplique al reproducir.
-
-// Notas de verificacion (Node 24, red real, 2026-09-22):
-//   - sha256Bytes/aes256CbcDecrypt/aesKeyBytes se compararon 1:1 contra
-//     node:crypto (40 rondas AES-256-CBC aleatorias + SHA-256 de varios
-//     tamanos) y contra los dataLink reales de serieskao.top: coinciden byte a
-//     byte. Utf8/base64 puros tambien comparados contra Buffer.
-//   - Pruebas reales de getStreams (ms medidos de punta a punta):
-//       278 movie   -> 6 enlaces en 5685 ms
-//       550 movie   -> 4 enlaces en 4744 ms
-//       603 movie   -> 6 enlaces en 5373 ms
-//       1399 tv S1E1-> 4 enlaces en 3140 ms
-//       1396 tv S2E3-> 2 enlaces en 2622 ms
-//     Los tres primeros son 3 idiomas (LAT/ESP/SUB) x 2 servidores; varias
-//     URLs verificadas con 200 + application/vnd.apple.mpegurl.
-//   - Entradas basura (0, -1, "x", null, id inexistente, season/episode null)
-//     devuelven [] sin lanzar; "278"/"1"/"1" como strings funcionan igual.
-//   - Presupuesto: si el trabajo interno pasa de BUDGET_MS se devuelve lo que ya
-//     este resuelto (nunca [] si habia embeds), asi el motor de 9 s siempre ve
-//     enlaces. Lo que no llego a resolverse se entrega como el propio embed con
-//     sus headers Referer/Origin para que el relay lo resuelva.
-//   - Algunas URLs del CDN rotativo del host (subdominios *.shop/*.sbs/*.cyou)
-//     verifican 200 y mueren segundos despues: es del host, no del codigo. Las
-//     URLs estables (self-hosted /stream/... y morencius.com) se mantienen.
-
+// 2. Los embeds crudos sin resolver NO se devuelven: que los descarte es
+//    trabajo del validador inyectado, y devolverlos solo gastaba su tiempo.
+// 3. No se descargan segmentos ni variantes: solo se verifica que el master
+//    devuelva #EXTM3U. Los headers Referer/Origin viajan en cada stream.
+//
+// ─── Notas de verificacion de la REESCRITURA (Node 24, red real, 2026-10-22) ─
+//   - La capa inyectada (cabecera __msValidate + envoltorio final) quedo
+//     byte-identica a la version anterior; la cripto (SHA-256 / AES-256-CBC /
+//     PoW) se conserva tal cual de la version verificada contra node:crypto y
+//     contra los dataLink reales, y esta bateria la ejercita de punta a punta.
+//   - getStreams con ids basura (0, -5, "x") devuelve [] sin lanzar.
+//   - Bateria real (mismas referencias que el arreglo parchado, arnes 70 s):
+//       Dune 2 (movie)         -> 4 (25,9 s) · 0 (26,0 s) · 1 (31,8 s)
+//       The Boys S1E1 (series) -> 2 (19,1 s) · 0 (12,0 s) · 2 (33,1 s)
+//       Breaking Bad S1E1      -> 2 (18,5 s) · 2 (27,1 s)
+//     La version parchada, medida el mismo dia y con la misma red, murio dos
+//     veces a los 9,0 s clavados en la fase de ids (sus topes en serie no
+//     dejaban pasar una peticion de TMDB de ~3 s) y dio Dune 1 / Boys 0 /
+//     Breaking Bad 0; la reescritura no presenta esa muerte estructural.
+//     Los ceros que quedan son la varianza de latencia ya conocida de esta
+//     IP de salida (la version parchada tambien los tenia: Dune 0,0,2,4).
+//   - Ninguna corrida se acerco al techo de 42 s: maximo medido 33,1 s.
 // ===== MasterScrap: getStreams solo devuelve enlaces funcionales =====
 (function () {
   try {
