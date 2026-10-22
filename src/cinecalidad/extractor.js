@@ -1,18 +1,35 @@
 /**
- * CineCalidad (cinecalidad.am) — películas y series en latino. v3.0.0 (2026-10-07).
+ * CineCalidad (cinecalidad.am) — películas y series en latino.
+ * Reescritura limpia 2026-10-22 (sustituye a la v3.0.0; sin parches encima).
  *
- * La API vieja tmdb.cinecalidad.am (/v1/items y /v1/playback) murió: 404 en
- * todo. El sitio volvió a ser el WordPress clásico scrapeable:
- *   buscar    GET https://www.cinecalidad.am/?s=<titulo>
- *             -> <a href=".../ver-pelicula/<slug>/">TituloAño…</a>
- *                <a href=".../ver-serie/<slug>/">…</a>
+ * Contrato: getStreams(tmdbId, mediaType, season, episode) con mediaType de
+ * Nuvio ('movie' | 'series' | 'anime'; lo que no es 'movie' se trata como tv
+ * para TMDB). El título se resuelve SIEMPRE vía TMDB desde el id. Solo se
+ * emite video directo ya validado; el idioma lo filtra la validación
+ * compartida (src/shared/validate.js, envuelta en index.js).
+ *
+ * Cómo es el sitio hoy (verificado en vivo 2026-10-22):
+ *   buscar    GET https://www.cinecalidad.am/?s=<consulta>
+ *             -> resultados con anchors a /ver-pelicula/<slug>/ y
+ *                /ver-serie/<slug>/ cuyo texto es "Título Año Sinopsis…".
+ *             -> la misma página trae widgets laterales con anchors de solo
+ *                imagen (texto vacío) a otras películas: NO son resultados.
  *   película  GET <url ver-pelicula> -> data-option="<embed>" (vimeos, voe…)
- *   episodio  GET https://www.cinecalidad.am/ver-el-episodio/<serieSlug>-<s>x<e>/
- *             -> data-option="<embed>"
+ *   episodio  GET /ver-el-episodio/<slugSerie>-<s>x<e>/ -> data-option=…
  *
- * Cadena: TMDB id -> título (API TMDB) -> ?s= -> mejor match por título+año ->
- * data-option -> resolvers compartidos -> solo video directo validado.
- * QuickJS-safe: var/function, sin new Function, sin regex con grupos raros.
+ * La búsqueda WP del sitio no encuentra los títulos TMDB tal cual cuando el
+ * post usa otra grafía: Dune 2 (TMDB 693134) está posteado como
+ * "Dune: Parte dos" y ni "Duna: Parte dos" ni "Dune: Part Two" devuelven
+ * resultados. Por eso la búsqueda prueba, en orden: título TMDB en español,
+ * título original y la primera palabra de ambos; y el match decide por el
+ * SLUG del href (el slug del post de Dune 2 es duna-parte-dos, derivado del
+ * título en español), con el texto y el año como apoyo. Un anchor sin texto
+ * nunca puntúa: antes el texto "" calzaba con cualquier título
+ * (indexOf('') === 0) y el provider devolvía una película equivocada.
+ *
+ * Cadena: TMDB id -> títulos -> ?s= -> match por slug/texto/año -> ficha ->
+ * data-option -> resolvers compartidos -> chequeo de video real -> streams.
+ * QuickJS-safe: var/function, sin new Function, sin normalize/matchAll.
  */
 import { fetchText, fetchWithTimeout } from '../shared/http.js';
 import { getEmbedResolver, getServerLabel } from '../shared/embedResolvers.js';
@@ -26,7 +43,7 @@ function hdrs() {
   return { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
 }
 
-/** Título + año desde la API de TMDB (lo que otros extractores del repo usan). */
+/** Título español, título original y año desde la API de TMDB. */
 function tituloTmdb(tmdbId, mediaType) {
   var tipo = String(mediaType || 'movie').toLowerCase() === 'movie' ? 'movie' : 'tv';
   var url =
@@ -46,12 +63,26 @@ function tituloTmdb(tmdbId, mediaType) {
     }).catch(function () { return null; });
 }
 
-/** Normaliza para comparar títulos: minúsculas, solo alfanumérico. */
+/** Normaliza para comparar textos: minúsculas, solo alfanumérico. */
 function norm(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9áéíóúñü]/g, '');
 }
 
-/** Saca los links ver-pelicula/ver-serie del HTML de búsqueda. */
+/** Forma de slug de un título: sin acentos, no-alfanuméricos a '-'. */
+function slugify(s) {
+  var t = String(s || '').toLowerCase()
+    .replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n');
+  return t.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/** slug del post desde su URL ver-pelicula/ver-serie. */
+function slugDeHref(href) {
+  var m = String(href || '').match(/ver-(?:pelicula|serie)\/([^\/\?#]+)/);
+  return m ? m[1] : '';
+}
+
+/** Links de resultado según el tipo, con su texto y su slug. */
 function linksDeBusqueda(html, tipo) {
   var marca = tipo === 'movie' ? 'ver-pelicula/' : 'ver-serie/';
   var res = [];
@@ -63,35 +94,76 @@ function linksDeBusqueda(html, tipo) {
     if (href.indexOf(marca) < 0 || vistos[href]) continue;
     vistos[href] = true;
     var txt = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    res.push({ href: href, texto: txt });
+    res.push({ href: href, texto: txt, slug: slugDeHref(href) });
   }
   return res;
 }
 
-/** Mejor candidato por título (+año si viene en el texto del link). */
-function mejorMatch(links, titulo, anio) {
+/**
+ * Elige el post correcto entre los links de una búsqueda.
+ * infos = [{titulo, slug}] con los títulos TMDB (español y original).
+ * Puntaje: slug exacto del post = 6, slug con sufijo del sitio
+ * ("-online-gratis-…") = 5, texto igual = 4, texto que contiene al título
+ * (o título que contiene un texto de al menos 3 caracteres) = 2, y +3 si el
+ * año de TMDB aparece en el texto. Sin slug ni texto que calce: se descarta.
+ * Los anchors sin texto (widgets de imagen) jamás puntúan por texto.
+ */
+function mejorMatch(links, infos, anio) {
   var mejor = null;
-  var mejorPts = -1;
-  var nq = norm(titulo);
+  var mejorPts = 0;
   for (var i = 0; i < links.length; i++) {
     var l = links[i];
-    var nt = norm(l.texto);
     var pts = 0;
-    if (nt === nq) pts += 4;
-    else if (nt.indexOf(nq) >= 0 || nq.indexOf(nt) >= 0) pts += 2;
-    else continue;
+    var j, nq, nt;
+    for (j = 0; j < infos.length; j++) {
+      if (!infos[j].slug) continue;
+      if (l.slug === infos[j].slug) pts = Math.max(pts, 6);
+      else if (l.slug.indexOf(infos[j].slug + '-') === 0) pts = Math.max(pts, 5);
+    }
+    nt = norm(l.texto);
+    if (nt) {
+      for (j = 0; j < infos.length; j++) {
+        nq = norm(infos[j].titulo);
+        if (!nq) continue;
+        if (nt === nq) pts = Math.max(pts, 4);
+        else if (nt.indexOf(nq) >= 0 || (nt.length >= 3 && nq.indexOf(nt) >= 0)) pts = Math.max(pts, 2);
+      }
+    }
+    if (pts <= 0) continue;
     if (anio && l.texto.indexOf(String(anio)) >= 0) pts += 3;
     if (pts > mejorPts) { mejorPts = pts; mejor = l; }
   }
   return mejor;
 }
 
-function buscar(titulo, tipo, anio) {
-  var url = BASE + '/?s=' + encodeURIComponent(titulo);
+/** Una consulta a la búsqueda del sitio, ya con el match aplicado. */
+function buscar(consulta, infos, tipo, anio) {
+  var url = BASE + '/?s=' + encodeURIComponent(consulta);
   return fetchText(url, { headers: hdrs() }, 12000).then(function (html) {
-    var links = linksDeBusqueda(html, tipo);
-    return mejorMatch(links, titulo, anio);
+    return mejorMatch(linksDeBusqueda(html, tipo), infos, anio);
   }).catch(function () { return null; });
+}
+
+/**
+ * Consultas a probar, en orden: título en español, título original, primera
+ * palabra del original y primera palabra del español. La primera palabra es
+ * el respaldo para los posts cuya grafía difiere de TMDB; el match por
+ * slug/año evita que ese respaldo amplio elija un post equivocado.
+ */
+function consultasDe(info) {
+  var consultas = [];
+  function add(q) {
+    if (q && consultas.indexOf(q) < 0) consultas.push(q);
+  }
+  function primeraPalabra(titulo) {
+    var p = String(titulo || '').split(/\s+/)[0].replace(/:+$/, '');
+    return p && p.length >= 3 ? p : '';
+  }
+  add(info.titulo);
+  add(info.original);
+  add(primeraPalabra(info.original));
+  add(primeraPalabra(info.titulo));
+  return consultas;
 }
 
 /** Embeds data-option de una página (se excluye youtube). */
@@ -168,24 +240,21 @@ function paginaAStreams(url) {
   }).catch(function () { return []; });
 }
 
-/** slug de serie desde su URL ver-serie. */
-function slugSerie(href) {
-  var m = String(href).match(/ver-serie\/([^\/\?#]+)/);
-  return m ? m[1] : '';
-}
-
 export function extractStreams(tmdbId, mediaType, season, episode) {
   var esPeli = String(mediaType || '').toLowerCase() === 'movie';
   var tipo = esPeli ? 'movie' : 'tv';
   return tituloTmdb(tmdbId, mediaType).then(function (info) {
     if (!info || !info.titulo) return [];
-    var titulos = [info.titulo];
-    if (info.original && info.original !== info.titulo) titulos.push(info.original);
+    var infos = [{ titulo: info.titulo, slug: slugify(info.titulo) }];
+    if (info.original && info.original !== info.titulo) {
+      infos.push({ titulo: info.original, slug: slugify(info.original) });
+    }
+    var consultas = consultasDe(info);
     var cadena = Promise.resolve(null);
-    titulos.forEach(function (t) {
+    consultas.forEach(function (q) {
       cadena = cadena.then(function (hit) {
         if (hit) return hit;
-        return buscar(t, tipo, info.anio);
+        return buscar(q, infos, tipo, info.anio);
       });
     });
     return cadena.then(function (hit) {
@@ -193,9 +262,8 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
       if (esPeli) return paginaAStreams(hit.href);
       var s = parseInt(season, 10); if (isNaN(s) || s < 1) s = 1;
       var e = parseInt(episode, 10); if (isNaN(e) || e < 1) e = 1;
-      var slug = slugSerie(hit.href);
-      if (!slug) return [];
-      var epUrl = BASE + '/ver-el-episodio/' + slug + '-' + s + 'x' + e + '/';
+      if (!hit.slug) return [];
+      var epUrl = BASE + '/ver-el-episodio/' + hit.slug + '-' + s + 'x' + e + '/';
       return paginaAStreams(epUrl);
     });
   }).catch(function () { return []; });
