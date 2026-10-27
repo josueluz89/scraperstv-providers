@@ -437,10 +437,17 @@ function le(e, t) {
     for (let s of n) {
       let o = `${ne}/pelicula/${s}/`;
       try {
-        let r = yield fetch(o, { headers: A }).then((u) => u.text()), i = ce(r);
-        if (!i || !t || i === t)
-          return console.log(`[CineCalidad] \u2713 Slug directo: /pelicula/${s}/ (${i || "?"})`), { url: o, html: r };
-        console.log(`[CineCalidad] A\xF1o no coincide: esperado ${t}, encontrado ${i} en /pelicula/${s}/`);
+        let u = yield fetch(o, { headers: A });
+        if (!u || u.status !== 200) {
+          console.log(`[CineCalidad] descartado (HTTP ${u ? u.status : "?"}) : /pelicula/${s}/`);
+          continue;
+        }
+        let r = yield u.text(), i = ce(r);
+        if (t && i && i !== t) {
+          console.log(`[CineCalidad] A\xF1o no coincide: esperado ${t}, encontrado ${i} en /pelicula/${s}/`);
+          continue;
+        }
+        return console.log(`[CineCalidad] \u2713 Slug directo: /pelicula/${s}/ (${i || "?"})`), { url: o, html: r };
       } catch (r) {
       }
     }
