@@ -370,9 +370,43 @@ function extraerEpisodio(slug, episodio) {
 }
 
 // ── flujo principal ────────────────────────────────────────────────────────
-async function extraer(tmdbId, mediaType, season, episode) {
+// ORQUESTACIÓN REESCRITA 2026-10-27 (lo que estaba mal se borró y se
+// escribió de nuevo; nada de parches sobre lo viejo):
+//  - Un solo presupuesto (deadline absoluto, 55 s desde index.js) que
+//    TODAS las fases respetan. Nada de carreras que devuelvan [] y
+//    tiren el trabajo en curso: eso mataba cada llamada a los 45 s.
+//  - Búsqueda en paralelo: todas las consultas a la vez, no una tras
+//    otra. El scoring elige sobre la unión completa.
+//  - Episodios en paralelo: se piden todas las entradas candidatas a
+//    la vez y se queda la primera, en orden, que tenga embeds.
+//  - Resolutores en paralelo con plazo por embed: el host más lento
+//    ya no marca el tiempo de todo el lote.
+//  - Intacto por probado bueno: tmdbTitulos, puntuar, elegirCandidato,
+//    confirmarLatino, extraerEmbeds, hostsAEmitir, resolverEmbed, el
+//    umbral 0,45, la regla solo-Latino y los resolvers compartidos.
+/** milisegundos que quedan del presupuesto (<= 0 = agotado) */
+function queda(deadline) {
+  return deadline - Date.now();
+}
+
+/** resolver con plazo: si se agota el tiempo, null (no tumba el lote) */
+function resolverConPlazo(embed, ms) {
+  if (!(ms > 0)) return Promise.resolve(null);
+  if (typeof setTimeout === 'undefined') return resolverEmbed(embed);
+  return Promise.race([
+    resolverEmbed(embed),
+    new Promise(function (res) {
+      setTimeout(function () {
+        res(null);
+      }, ms);
+    }),
+  ]);
+}
+
+async function extraer(tmdbId, mediaType, season, episode, deadline) {
   var tipo = String(mediaType || '').toLowerCase();
   if (tipo === 'movie') return []; // el sitio es solo series/anime
+  if (!(deadline > 0)) deadline = Date.now() + 55000;
 
   var temporada = parseInt(season, 10);
   if (isNaN(temporada) || temporada < 1) temporada = 1;
@@ -411,48 +445,64 @@ async function extraer(tmdbId, mediaType, season, episode) {
     }
   }
 
+  // BÚSQUEDA EN PARALELO. Antes: una consulta tras otra, en serie;
+  // con el sitio lento, el bucle solo se comía el presupuesto antes
+  // de llegar al episodio. Ahora: todas las consultas a la vez (cada
+  // buscar() ya se traga su propio error y devuelve []), se unen sin
+  // duplicados respetando el orden de las consultas, y el scoring
+  // elige sobre la unión completa. El corte anticipado del bucle viejo
+  // ya no hace falta: en paralelo no hay tiempo que ahorrar cortando.
+  if (queda(deadline) <= 0) return [];
+  var porConsulta = await Promise.all(queries.map(buscar));
   var slugs = [];
   var vistos = {};
-  // Se busca título por título y se corta en cuanto ya hay un candidato
-  // fuerte (scoring de título >= 0.9): seguir buscando solo quema el
-  // presupuesto de tiempo del provider sin cambiar el elegido. Si
-  // ningún título produce un candidato fuerte, se agotan todas las
-  // consultas y el scoring decide con todo lo encontrado.
-  for (var q = 0; q < queries.length; q++) {
-    var encontrados = await buscar(queries[q]);
+  for (var q = 0; q < porConsulta.length; q++) {
+    var encontrados = porConsulta[q];
     for (var i = 0; i < encontrados.length; i++) {
       if (!vistos[encontrados[i]]) {
         vistos[encontrados[i]] = true;
         slugs.push(encontrados[i]);
       }
     }
-    var parciales = elegirCandidato(slugs, titulos, temporada);
-    var fuerte = false;
-    for (var pc = 0; pc < parciales.length; pc++) {
-      if (parciales[pc].titulo >= 0.9) fuerte = true;
-    }
-    if (fuerte) break;
   }
   if (!slugs.length) return [];
 
   var candidatos = elegirCandidato(slugs, titulos, temporada);
   if (!candidatos.length) return [];
   candidatos = await confirmarLatino(candidatos);
+  if (!candidatos.length) return [];
 
-  // prueba las entradas en orden hasta encontrar el episodio
+  // EPISODIO EN PARALELO. Antes: se probaba una entrada tras otra
+  // hasta que una tuviera embeds. Ahora: se piden todas a la vez y
+  // se queda la primera, en orden de candidato, que tenga embeds.
+  if (queda(deadline) <= 0) return [];
+  var paginas = await Promise.all(
+    candidatos.map(function (c) {
+      return extraerEpisodio(c.slug, ep);
+    })
+  );
   var episodio = null;
   for (var c = 0; c < candidatos.length; c++) {
-    var encontrado = await extraerEpisodio(candidatos[c].slug, ep);
-    if (encontrado && encontrado.embeds.length) {
-      episodio = encontrado;
+    if (paginas[c] && paginas[c].embeds.length) {
+      episodio = paginas[c];
       episodio.slug = candidatos[c].slug;
       break;
     }
   }
   if (!episodio) return [];
 
+  // RESOLUCIÓN CON PLAZO POR EMBED. Antes: Promise.all sin plazo; el
+  // embed más lento marcaba el tiempo de todo el lote. Ahora: cada
+  // resolver corre contra el tiempo que queda del presupuesto; el que
+  // se agota devuelve null y los demás siguen. Lo resuelto se emite;
+  // lo no resuelto sigue el camino de siempre (embed crudo, que la
+  // validación final filtra si no es video real).
   var embeds = hostsAEmitir(episodio.embeds).slice(0, MAX_RESOLVER);
-  var resueltos = await Promise.all(embeds.map(resolverEmbed));
+  var resueltos = await Promise.all(
+    embeds.map(function (e) {
+      return resolverConPlazo(e, queda(deadline));
+    })
+  );
 
   var streams = [];
   var yaEsta = {};
