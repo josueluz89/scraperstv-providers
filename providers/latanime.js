@@ -1,6 +1,6 @@
 /**
  * latanime - Built from src/latanime/
- * Generated: 2026-10-22T08:24:49.265Z
+ * Generated: 2026-10-27T17:50:43.149Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7931,11 +7931,30 @@ function extraerEpisodio(slug, episodio) {
     return null;
   });
 }
-function extraer(tmdbId, mediaType, season, episode) {
+function queda(deadline) {
+  return deadline - Date.now();
+}
+function resolverConPlazo(embed, ms) {
+  if (!(ms > 0))
+    return Promise.resolve(null);
+  if (typeof setTimeout === "undefined")
+    return resolverEmbed(embed);
+  return Promise.race([
+    resolverEmbed(embed),
+    new Promise(function(res) {
+      setTimeout(function() {
+        res(null);
+      }, ms);
+    })
+  ]);
+}
+function extraer(tmdbId, mediaType, season, episode, deadline) {
   return __async(this, null, function* () {
     var tipo = String(mediaType || "").toLowerCase();
     if (tipo === "movie")
       return [];
+    if (!(deadline > 0))
+      deadline = Date.now() + 55e3;
     var temporada = parseInt(season, 10);
     if (isNaN(temporada) || temporada < 1)
       temporada = 1;
@@ -7968,24 +7987,19 @@ function extraer(tmdbId, mediaType, season, episode) {
           queries.push(palabras[0].slice(0, L));
       }
     }
+    if (queda(deadline) <= 0)
+      return [];
+    var porConsulta = yield Promise.all(queries.map(buscar));
     var slugs = [];
     var vistos = {};
-    for (var q = 0; q < queries.length; q++) {
-      var encontrados = yield buscar(queries[q]);
+    for (var q = 0; q < porConsulta.length; q++) {
+      var encontrados = porConsulta[q];
       for (var i = 0; i < encontrados.length; i++) {
         if (!vistos[encontrados[i]]) {
           vistos[encontrados[i]] = true;
           slugs.push(encontrados[i]);
         }
       }
-      var parciales = elegirCandidato(slugs, titulos, temporada);
-      var fuerte = false;
-      for (var pc = 0; pc < parciales.length; pc++) {
-        if (parciales[pc].titulo >= 0.9)
-          fuerte = true;
-      }
-      if (fuerte)
-        break;
     }
     if (!slugs.length)
       return [];
@@ -7993,11 +8007,19 @@ function extraer(tmdbId, mediaType, season, episode) {
     if (!candidatos.length)
       return [];
     candidatos = yield confirmarLatino(candidatos);
+    if (!candidatos.length)
+      return [];
+    if (queda(deadline) <= 0)
+      return [];
+    var paginas = yield Promise.all(
+      candidatos.map(function(c2) {
+        return extraerEpisodio(c2.slug, ep);
+      })
+    );
     var episodio = null;
     for (var c = 0; c < candidatos.length; c++) {
-      var encontrado = yield extraerEpisodio(candidatos[c].slug, ep);
-      if (encontrado && encontrado.embeds.length) {
-        episodio = encontrado;
+      if (paginas[c] && paginas[c].embeds.length) {
+        episodio = paginas[c];
         episodio.slug = candidatos[c].slug;
         break;
       }
@@ -8005,7 +8027,11 @@ function extraer(tmdbId, mediaType, season, episode) {
     if (!episodio)
       return [];
     var embeds = hostsAEmitir(episodio.embeds).slice(0, MAX_RESOLVER);
-    var resueltos = yield Promise.all(embeds.map(resolverEmbed));
+    var resueltos = yield Promise.all(
+      embeds.map(function(e) {
+        return resolverConPlazo(e, queda(deadline));
+      })
+    );
     var streams = [];
     var yaEsta = {};
     for (var r = 0; r < embeds.length; r++) {
@@ -8237,37 +8263,42 @@ function filterWorkingStreams(streams, opts) {
     return [];
   });
 }
-function withWorkingStreams(extractPromise) {
-  return Promise.resolve(extractPromise).then(function(streams) {
-    return filterWorkingStreams(streams);
-  }).catch(function() {
-    return [];
-  });
-}
 
 // src/latanime/index.js
-function withTimeout(promise, ms) {
-  if (typeof setTimeout === "undefined")
-    return promise;
-  return Promise.race([
-    promise,
-    new Promise(function(res) {
-      setTimeout(function() {
-        res([]);
-      }, ms);
-    })
-  ]);
-}
+var PRESUPUESTO_MS = 55e3;
+var GUARDA_MS = 58e3;
 function getStreams(tmdbId, mediaType, season, episode) {
   var tipo = String(mediaType || "").toLowerCase();
   if (tipo === "movie")
     return Promise.resolve([]);
-  return withWorkingStreams(withTimeout(
-    extraer(tmdbId, tipo, season, episode).catch(function() {
+  var inicio = Date.now();
+  var trabajo = extraer(tmdbId, tipo, season, episode, inicio + PRESUPUESTO_MS).catch(function() {
+    return [];
+  }).then(function(streams) {
+    if (!streams || !streams.length)
       return [];
-    }),
-    45e3
-  ));
+    var resto = inicio + PRESUPUESTO_MS - Date.now();
+    if (resto <= 0)
+      return [];
+    var t = Math.floor(resto / 2);
+    if (t > 7e3)
+      t = 7e3;
+    if (t < 1e3)
+      t = 1e3;
+    return filterWorkingStreams(streams, { timeoutMs: t });
+  }).catch(function() {
+    return [];
+  });
+  if (typeof setTimeout === "undefined")
+    return trabajo;
+  return Promise.race([
+    trabajo,
+    new Promise(function(res) {
+      setTimeout(function() {
+        res([]);
+      }, GUARDA_MS);
+    })
+  ]);
 }
 module.exports = { getStreams };
 /*! Bundled license information:
