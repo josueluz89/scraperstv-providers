@@ -1,6 +1,6 @@
 /**
  * masters - Built from src/masters/
- * Generated: 2026-10-16T23:40:41.732Z
+ * Generated: 2026-10-29T21:23:00.451Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7574,12 +7574,75 @@ function getEmbedResolver(url) {
   }
   return null;
 }
+function getServerLabel(url) {
+  if (url.includes("ok.ru"))
+    return "OkRu";
+  if (url.includes("voe.sx") || url.includes("cloudwindow"))
+    return "VOE";
+  if (url.includes("streamwish") || url.includes("hlswish") || url.includes("vibuxer") || url.includes("strwish") || url.includes("premilkyway"))
+    return "StreamWish";
+  if (url.includes("vidhide") || url.includes("dintezuvio") || url.includes("minochinos") || url.includes("dramiyos") || url.includes("dhcplay") || url.includes("smoothpre") || url.includes("dhtpre") || url.includes("vidspeeder") || url.includes("moorearn") || url.includes("travid") || url.includes("vidhidehub") || url.includes("vidhidevip") || url.includes("vidhidepre") || url.includes("kinoger") || url.includes("movearnpre") || url.includes("peytonepre") || url.includes("filelions"))
+    return "VidHide";
+  if (url.includes("byse") || url.includes("filemoon") || url.includes("rapidvideo"))
+    return "FileMoon";
+  if (url.includes("luluvid") || url.includes("lulus"))
+    return "Lulu";
+  if (url.includes("uqload"))
+    return "Uqload";
+  if (url.includes("goodstream"))
+    return "GoodStream";
+  if (url.includes("vimeos"))
+    return "Vimeos";
+  if (url.includes("doodstream") || url.includes("dsvplay") || url.includes("dood."))
+    return "Dood";
+  if (url.includes("mixdrop"))
+    return "Mixdrop";
+  if (url.includes("mp4upload"))
+    return "Mp4Upload";
+  return "Online";
+}
 
 // src/masters/extractor.js
 var TMDB_API_KEY = "1f54bd990f1cdfb230adb312546d765d";
 var MAIN_URL = "https://ww3.gnulahd.nu";
-var FALLBACK_URL = "https://gnulahd.nu";
-var ACCENT_MAP = { "\xE1": "a", "\xE9": "e", "\xED": "i", "\xF3": "o", "\xFA": "u", "\xFC": "u", "\xF1": "n", "\xC1": "a", "\xC9": "e", "\xCD": "i", "\xD3": "o", "\xDA": "u", "\xDC": "u", "\xD1": "n", "\xE0": "a", "\xE8": "e", "\xEC": "i", "\xF2": "o", "\xF9": "u", "\xE2": "a", "\xEA": "e", "\xEE": "i", "\xF4": "o", "\xFB": "u", "\xE4": "a", "\xEB": "e", "\xEF": "i", "\xF6": "o", "\xE7": "c", "\xE3": "a", "\xF5": "o" };
+var MIRRORS = [
+  "https://ww3.gnulahd.nu",
+  "https://gnulahd.click",
+  "https://gnulahd.bid"
+];
+var ACCENT_MAP = {
+  "\xE1": "a",
+  "\xE9": "e",
+  "\xED": "i",
+  "\xF3": "o",
+  "\xFA": "u",
+  "\xFC": "u",
+  "\xF1": "n",
+  "\xC1": "a",
+  "\xC9": "e",
+  "\xCD": "i",
+  "\xD3": "o",
+  "\xDA": "u",
+  "\xDC": "u",
+  "\xD1": "n",
+  "\xE0": "a",
+  "\xE8": "e",
+  "\xEC": "i",
+  "\xF2": "o",
+  "\xF9": "u",
+  "\xE2": "a",
+  "\xEA": "e",
+  "\xEE": "i",
+  "\xF4": "o",
+  "\xFB": "u",
+  "\xE4": "a",
+  "\xEB": "e",
+  "\xEF": "i",
+  "\xF6": "o",
+  "\xE7": "c",
+  "\xE3": "a",
+  "\xF5": "o"
+};
 function stripAccents(s) {
   return (s || "").replace(/[^\x00-\x7F]/g, function(c) {
     return ACCENT_MAP[c] || "";
@@ -7592,7 +7655,7 @@ function normalizeText(text) {
 }
 var STOPWORDS = { y: 1, de: 1, la: 1, el: 1, los: 1, las: 1, un: 1, una: 1, del: 1, al: 1, e: 1, u: 1, o: 1, en: 1, con: 1, por: 1, para: 1, the: 1, a: 1, an: 1, of: 1, and: 1, to: 1, in: 1, on: 1, vs: 1 };
 function searchWords(media) {
-  var all = normalizeText((media.originalTitle || "") + " " + (media.title || ""));
+  var all = normalizeText((media.originalTitle || "") + " " + (media.title || "") + " " + (media.esTitle || "") + " " + (media.enTitle || ""));
   var words = all.replace(/[^a-z0-9]/g, " ").split(" ").filter(Boolean);
   var unique = {}, out = [];
   for (var i = 0; i < words.length; i++) {
@@ -7610,24 +7673,26 @@ function searchWords(media) {
 function slugify(text) {
   return stripAccents((text || "").toLowerCase()).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").trim();
 }
-function getServerLabel(url) {
-  if (url.indexOf("voe.sx") !== -1 || url.indexOf("tubeless") !== -1 || url.indexOf("simpulum") !== -1 || url.indexOf("uroch") !== -1 || url.indexOf("nathanfromsubject") !== -1 || url.indexOf("yip.su") !== -1 || url.indexOf("metagnath") !== -1 || url.indexOf("donaldlineelse") !== -1 || url.indexOf("crystal") !== -1 || url.indexOf("cloudwindow") !== -1)
-    return "VOE";
-  if (url.indexOf("they.tube") !== -1 || url.indexOf("the.tube") !== -1)
-    return "Tube";
-  if (url.indexOf("filemoon") !== -1 || url.indexOf("bysedi") !== -1)
-    return "FileMoon";
-  if (url.indexOf("streamwish") !== -1 || url.indexOf("hlswish") !== -1 || url.indexOf("vibuxer") !== -1 || url.indexOf("strwish") !== -1)
-    return "StreamWish";
-  if (url.indexOf("vidhide") !== -1 || url.indexOf("dintezuvio") !== -1 || url.indexOf("filelions") !== -1)
-    return "VidHide";
-  if (url.indexOf("uqload") !== -1)
-    return "Uqload";
-  if (url.indexOf("luluvid") !== -1 || url.indexOf("lulus") !== -1)
-    return "Lulu";
-  if (url.indexOf("ok.ru") !== -1 || url.indexOf("ok video") !== -1)
-    return "OK";
-  return "Online";
+function classifyLanguage(label) {
+  if (!label)
+    return null;
+  var s = String(label).toLowerCase();
+  if (s.indexOf("castellano") !== -1 || s.indexOf("espa\xF1a") !== -1 || s.indexOf("espana") !== -1 || s.indexOf("es_es") !== -1) {
+    return null;
+  }
+  if (s.indexOf("latino") !== -1 || s.indexOf("mx") !== -1 || s.indexOf("lat") !== -1) {
+    return "Latino";
+  }
+  if (s.indexOf("sub") !== -1 || s.indexOf("vose") !== -1) {
+    return "Subtitulado";
+  }
+  if (s.indexOf("ingles") !== -1 || s.indexOf("english") !== -1 || s === "en") {
+    return "Ingl\xE9s";
+  }
+  if (s.indexOf("japones") !== -1 || s.indexOf("japanese") !== -1 || s === "ja") {
+    return "Japon\xE9s";
+  }
+  return null;
 }
 function extractSearchResults(html) {
   var candidates = [];
@@ -7666,16 +7731,42 @@ function extractEpisodes(html, season, episode) {
   return null;
 }
 function getMediaTitle(tmdbId, mediaType) {
-  var url = "https://api.themoviedb.org/3/" + mediaType + "/" + tmdbId + "?api_key=" + TMDB_API_KEY + "&language=es-MX";
-  return fetchText(url).then(function(raw) {
-    var data = JSON.parse(raw);
-    var title = mediaType === "movie" ? data.title : data.name;
-    var originalTitle = mediaType === "movie" ? data.original_title : data.original_name;
-    return { title, originalTitle };
+  var base = "https://api.themoviedb.org/3/" + mediaType + "/" + tmdbId;
+  function req(url) {
+    return fetchText(url).then(function(raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        return null;
+      }
+    }).catch(function() {
+      return null;
+    });
+  }
+  return Promise.all([
+    req(base + "?api_key=" + TMDB_API_KEY + "&language=es-MX"),
+    req(base + "?api_key=" + TMDB_API_KEY + "&language=es-ES"),
+    req(base + "?api_key=" + TMDB_API_KEY + "&language=en-US")
+  ]).then(function(res) {
+    var esMx = res[0] || {};
+    var esEs = res[1] || {};
+    var enUs = res[2] || {};
+    var title = mediaType === "movie" ? esMx.title : esMx.name;
+    var esTitle = mediaType === "movie" ? esEs.title : esEs.name;
+    var enTitle = mediaType === "movie" ? enUs.title : enUs.name;
+    var originalTitle = mediaType === "movie" ? esMx.original_title : esMx.original_name;
+    return {
+      title: title || esTitle || enTitle || "",
+      esTitle: esTitle || "",
+      enTitle: enTitle || "",
+      originalTitle: originalTitle || ""
+    };
   });
 }
 function resolveTheyTube(code, resolvePath, authParam, pageUrl) {
-  var resolveUrl = MAIN_URL + resolvePath + encodeURIComponent(code) + authParam;
+  var hostMatch = pageUrl.match(/^(https?:\/\/[^\/]+)/);
+  var baseHost = hostMatch ? hostMatch[1] : MAIN_URL;
+  var resolveUrl = baseHost + resolvePath + encodeURIComponent(code) + authParam;
   return fetchText(resolveUrl, {
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36", Referer: pageUrl }
   }).then(function(raw) {
@@ -7689,30 +7780,47 @@ function resolveTheyTube(code, resolvePath, authParam, pageUrl) {
   });
 }
 function searchSite(query) {
-  var searchUrl = MAIN_URL + "/?s=" + encodeURIComponent(query);
-  return fetchText(searchUrl, { headers: { Referer: MAIN_URL + "/", "Accept-Language": "es-MX,es;q=0.9" } }).then(function(html) {
-    return extractSearchResults(html);
-  }).catch(function() {
-    var fbUrl = FALLBACK_URL + "/?s=" + encodeURIComponent(query);
-    return fetchText(fbUrl, { headers: { Referer: FALLBACK_URL + "/" } }).then(function(html) {
+  var q = encodeURIComponent(query);
+  function tryMirror(idx) {
+    if (idx >= MIRRORS.length)
+      return Promise.resolve([]);
+    var base = MIRRORS[idx];
+    var searchUrl = base + "/?s=" + q;
+    return fetchText(searchUrl, { headers: { Referer: base + "/", "Accept-Language": "es-MX,es;q=0.9" } }).then(function(html) {
       return extractSearchResults(html);
     }).catch(function() {
-      return [];
+      return tryMirror(idx + 1);
     });
-  });
+  }
+  return tryMirror(0);
 }
 function extractStreams(tmdbId, mediaType, season, episode) {
   var tmdbType = mediaType === "tv" || mediaType === "series" || mediaType === "anime" ? "tv" : "movie";
   return getMediaTitle(tmdbId, tmdbType).then(function(media) {
     var queries = [];
-    if (media.originalTitle)
-      queries.push(media.originalTitle);
-    if (media.title && media.title !== media.originalTitle)
-      queries.push(media.title);
+    var seen = {};
+    function addQ(t) {
+      if (!t || typeof t !== "string")
+        return;
+      var s = t.trim();
+      var k = normalizeText(s);
+      if (!k || seen[k])
+        return;
+      seen[k] = true;
+      queries.push(s);
+    }
+    addQ(media.originalTitle);
+    addQ(media.title);
+    addQ(media.esTitle);
+    addQ(media.enTitle);
     if (queries.length === 0)
       return [];
-    var normalizedOriginals = [normalizeText(media.originalTitle || "")];
-    var normalizedTitles = [normalizeText(media.title || "")];
+    var normalizedOriginals = [normalizeText(media.originalTitle || "")].filter(Boolean);
+    var normalizedTitles = [
+      normalizeText(media.title || ""),
+      normalizeText(media.esTitle || ""),
+      normalizeText(media.enTitle || "")
+    ].filter(Boolean);
     var expectedType = tmdbType;
     var bestTvScore = -1, bestTvUrl = null, bestTvType = "movie";
     var bestMovieScore = -1, bestMovieUrl = null, bestMovieType = "movie";
@@ -7739,11 +7847,11 @@ function extractStreams(tmdbId, mediaType, season, episode) {
           qWords = qWords.concat(normalizedOriginals[n].split(" ").filter(Boolean));
         for (var n = 0; n < normalizedTitles.length; n++)
           qWords = qWords.concat(normalizedTitles[n].split(" ").filter(Boolean));
-        var unique = {};
+        var uq = {};
         qWords = qWords.filter(function(w2) {
-          if (unique[w2])
+          if (uq[w2])
             return false;
-          unique[w2] = true;
+          uq[w2] = true;
           return true;
         });
         var cWords = normalizedCand.split(" ").filter(Boolean);
@@ -7803,11 +7911,11 @@ function extractStreams(tmdbId, mediaType, season, episode) {
     }
     function trySlugProbe() {
       var slugs = [];
-      var seen = {};
-      [media.title, media.originalTitle].forEach(function(t) {
+      var seenSlugs = {};
+      [media.title, media.esTitle, media.enTitle, media.originalTitle].forEach(function(t) {
         var s = slugify(t);
-        if (s && !seen[s]) {
-          seen[s] = true;
+        if (s && !seenSlugs[s]) {
+          seenSlugs[s] = true;
           slugs.push(s);
         }
       });
@@ -7877,8 +7985,11 @@ function getPageContent(pageUrl, mediaType, targetType, season, episode, media) 
       var epUrl = extractEpisodes(tvHtml, season, episode);
       if (!epUrl)
         return [];
-      if (epUrl.indexOf("http") !== 0)
-        epUrl = MAIN_URL + epUrl;
+      if (epUrl.indexOf("http") !== 0) {
+        var hostMatch = pageUrl.match(/^(https?:\/\/[^\/]+)/);
+        var baseHost = hostMatch ? hostMatch[1] : MAIN_URL;
+        epUrl = baseHost + epUrl;
+      }
       return getPlayPage(epUrl);
     });
   }
@@ -7888,7 +7999,9 @@ function getPlayerLangs(pageUrl, playHtml) {
   var pidMatch = playHtml.match(/_gnrdPid\s*=\s*(\d+)/);
   var tokMatch = playHtml.match(/_gnrdTok\s*=\s*"([^"]+)"/);
   if (pidMatch && tokMatch) {
-    var apiUrl = MAIN_URL + "/wp-json/gnrd/v1/player?id=" + pidMatch[1] + "&t=" + encodeURIComponent(tokMatch[1]);
+    var hostMatch = pageUrl.match(/^(https?:\/\/[^\/]+)/);
+    var baseHost = hostMatch ? hostMatch[1] : MAIN_URL;
+    var apiUrl = baseHost + "/wp-json/gnrd/v1/player?id=" + pidMatch[1] + "&t=" + encodeURIComponent(tokMatch[1]);
     return fetchJson(apiUrl, {
       headers: { Referer: pageUrl }
     }).then(function(raw) {
@@ -7987,24 +8100,27 @@ function buildStreamsFromLangs(pageUrl, playHtml, langs) {
   var streams = [];
   if (!langs || !langs.length)
     return streams;
-  var latinoLangs = [];
-  var otherLangs = [];
+  var langGroups = [];
   for (var fl = 0; fl < langs.length; fl++) {
-    var lbl = (langs[fl].label || "").toLowerCase();
-    if (lbl.indexOf("latino") !== -1 || lbl.indexOf("mx") !== -1)
-      latinoLangs.push(langs[fl]);
-    else
-      otherLangs.push(langs[fl]);
+    var tag = classifyLanguage(langs[fl].label);
+    if (tag) {
+      langGroups.push({ tag, servers: langs[fl].servers || [] });
+    }
   }
-  var useLangs = latinoLangs.length > 0 ? latinoLangs : langs;
-  var isFallback = latinoLangs.length === 0;
+  if (!langGroups.length)
+    return streams;
+  langGroups.sort(function(a, b) {
+    if (a.tag === "Latino" && b.tag !== "Latino")
+      return -1;
+    if (a.tag !== "Latino" && b.tag === "Latino")
+      return 1;
+    return 0;
+  });
   var promises = [];
-  for (var l = 0; l < useLangs.length; l++) {
-    var langobj = useLangs[l];
-    var label = langobj.label || "";
-    if (!isFallback && label.toLowerCase().indexOf("latino") === -1 && label.toLowerCase().indexOf("mx") === -1)
-      continue;
-    var servers = langobj.servers || [];
+  for (var g = 0; g < langGroups.length; g++) {
+    var grp = langGroups[g];
+    var langTag = grp.tag;
+    var servers = grp.servers;
     for (var s = 0; s < servers.length; s++) {
       var srv = servers[s];
       var cleanSrc = (srv.src || "").replace(/\\\//g, "/");
@@ -8024,17 +8140,17 @@ function buildStreamsFromLangs(pageUrl, playHtml, langs) {
                     title: (result.quality || "HD") + " \xB7 " + lTag + " \xB7 " + (title || "Tube"),
                     url: result.url,
                     quality: result.quality || "HD",
+                    language: lTag,
                     headers: result.headers
                   });
                 }
               })
             );
-          })(cleanSrc, srv.title, isFallback ? label : "Latino");
+          })(cleanSrc, srv.title, langTag);
           continue;
         }
       }
       var serverLabel = getServerLabel(cleanSrc);
-      var langTag = isFallback ? label : "Latino";
       (function(srcUrl, srvTitle, sLabel, lTag) {
         var fixedUrl = mapDomain(srcUrl);
         var resolver = getEmbedResolver(fixedUrl);
@@ -8047,6 +8163,7 @@ function buildStreamsFromLangs(pageUrl, playHtml, langs) {
                   title: (result.quality || "HD") + " \xB7 " + lTag + " \xB7 " + (srvTitle || sLabel),
                   url: result.url,
                   quality: result.quality || "HD",
+                  language: lTag,
                   headers: result.headers
                 });
               }

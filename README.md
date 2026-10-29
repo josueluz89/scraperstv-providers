@@ -47,7 +47,7 @@ https://raw.githubusercontent.com/josueluz89/scraperstv-providers/main/providers
 Para comprobar que una dirección responde sin abrir la app, pégala en el navegador: tiene que
 mostrar el texto del fichero (o el JSON), no un 404.
 
-## Providers activos (18)
+## Providers activos (19)
 
 | Nombre | id | Películas | Series |
 |---|---|---|---|
@@ -58,6 +58,7 @@ mostrar el texto del fichero (o el JSON), no un 404.
 | FuegoCine | `fuegocine` | sí | sí |
 | LaMovie | `lamovie` | sí | sí |
 | Latanime (solo Latino) | `latanime` | — | sí |
+| Masters (GnulaHD) | `masters` | sí | sí |
 | Pelispedia | `pelispedia` | sí | sí |
 | PelisPlusHD | `pelisplus` | sí | sí |
 | Pelisplusto | `pelisplusto` | sí | sí |
@@ -70,10 +71,10 @@ mostrar el texto del fichero (o el JSON), no un 404.
 | Unlimplay | `unlimplay` | sí | sí |
 | VidSrc | `vidsrc` | sí | sí |
 
-## Providers apagados (5)
+## Providers apagados (4)
 
 Se quedan en el repo (con su causa) para no perder el trabajo: la app los ignora porque están
-`enabled: false`. Los cinco se apagaron el **2026-09-23**.
+`enabled: false`. Se apagaron el **2026-09-23**.
 
 | Nombre | id | Por qué está apagado |
 |---|---|---|
@@ -81,7 +82,6 @@ Se quedan en el repo (con su causa) para no perder el trabajo: la app los ignora
 | DeTodoPeliculas | `detodopeliculas` | detodopeliculas.nu no responde (timeout) y el bundle necesita los externos de Nuvio (crypto-js, Buffer) |
 | Fanpelis | `fanpelis` | fanpelis.to no responde (timeout) |
 | LaCartoons | `lacartoons` | lacartoons.com con timeout (0 bytes) |
-| Masters (GnulaHD) | `masters` | gnulahd.nu y ww3 devuelven 502 |
 
 ## Añadir o arreglar un provider
 

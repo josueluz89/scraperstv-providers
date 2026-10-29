@@ -1,12 +1,24 @@
 import { fetchText, fetchJson } from '../shared/http.js';
-import { getEmbedResolver, mapDomain } from '../shared/embedResolvers.js';
+import { getEmbedResolver, mapDomain, getServerLabel } from '../shared/embedResolvers.js';
 
 const TMDB_API_KEY = '1f54bd990f1cdfb230adb312546d765d';
 const MAIN_URL = 'https://ww3.gnulahd.nu';
-const FALLBACK_URL = 'https://gnulahd.nu';
+const MIRRORS = [
+  'https://ww3.gnulahd.nu',
+  'https://gnulahd.click',
+  'https://gnulahd.bid'
+];
 
-var ACCENT_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e', 'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ç': 'c', 'ã': 'a', 'õ': 'o' };
-function stripAccents(s) { return (s || '').replace(/[^\x00-\x7F]/g, function(c) { return ACCENT_MAP[c] || ''; }); }
+var ACCENT_MAP = {
+  'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n',
+  'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n',
+  'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u', 'â': 'a', 'ê': 'e',
+  'î': 'i', 'ô': 'o', 'û': 'u', 'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o',
+  'ç': 'c', 'ã': 'a', 'õ': 'o'
+};
+function stripAccents(s) {
+  return (s || '').replace(/[^\x00-\x7F]/g, function(c) { return ACCENT_MAP[c] || ''; });
+}
 function normalizeText(text) {
   if (!text) return '';
   return stripAccents(text.toLowerCase())
@@ -16,7 +28,7 @@ function normalizeText(text) {
 }
 var STOPWORDS = { y: 1, de: 1, la: 1, el: 1, los: 1, las: 1, un: 1, una: 1, del: 1, al: 1, e: 1, u: 1, o: 1, en: 1, con: 1, por: 1, para: 1, the: 1, a: 1, an: 1, of: 1, and: 1, to: 1, in: 1, on: 1, vs: 1 };
 function searchWords(media) {
-  var all = normalizeText((media.originalTitle || '') + ' ' + (media.title || ''));
+  var all = normalizeText((media.originalTitle || '') + ' ' + (media.title || '') + ' ' + (media.esTitle || '') + ' ' + (media.enTitle || ''));
   var words = all.replace(/[^a-z0-9]/g, ' ').split(' ').filter(Boolean);
   var unique = {}, out = [];
   for (var i = 0; i < words.length; i++) {
@@ -32,20 +44,26 @@ function slugify(text) {
   return stripAccents((text || '').toLowerCase()).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').trim();
 }
 
-function getServerLabel(url) {
-  if (url.indexOf('voe.sx') !== -1 || url.indexOf('tubeless') !== -1 || url.indexOf('simpulum') !== -1 ||
-      url.indexOf('uroch') !== -1 || url.indexOf('nathanfromsubject') !== -1 || url.indexOf('yip.su') !== -1 ||
-      url.indexOf('metagnath') !== -1 || url.indexOf('donaldlineelse') !== -1 || url.indexOf('crystal') !== -1 ||
-      url.indexOf('cloudwindow') !== -1) return 'VOE';
-  if (url.indexOf('they.tube') !== -1 || url.indexOf('the.tube') !== -1) return 'Tube';
-  if (url.indexOf('filemoon') !== -1 || url.indexOf('bysedi') !== -1) return 'FileMoon';
-  if (url.indexOf('streamwish') !== -1 || url.indexOf('hlswish') !== -1 || url.indexOf('vibuxer') !== -1 ||
-      url.indexOf('strwish') !== -1) return 'StreamWish';
-  if (url.indexOf('vidhide') !== -1 || url.indexOf('dintezuvio') !== -1 || url.indexOf('filelions') !== -1) return 'VidHide';
-  if (url.indexOf('uqload') !== -1) return 'Uqload';
-  if (url.indexOf('luluvid') !== -1 || url.indexOf('lulus') !== -1) return 'Lulu';
-  if (url.indexOf('ok.ru') !== -1 || url.indexOf('ok video') !== -1) return 'OK';
-  return 'Online';
+function classifyLanguage(label) {
+  if (!label) return null;
+  var s = String(label).toLowerCase();
+  // Regla del repo (METODO.md §5): el castellano de España se descarta siempre
+  if (s.indexOf('castellano') !== -1 || s.indexOf('españa') !== -1 || s.indexOf('espana') !== -1 || s.indexOf('es_es') !== -1) {
+    return null;
+  }
+  if (s.indexOf('latino') !== -1 || s.indexOf('mx') !== -1 || s.indexOf('lat') !== -1) {
+    return 'Latino';
+  }
+  if (s.indexOf('sub') !== -1 || s.indexOf('vose') !== -1) {
+    return 'Subtitulado';
+  }
+  if (s.indexOf('ingles') !== -1 || s.indexOf('english') !== -1 || s === 'en') {
+    return 'Inglés';
+  }
+  if (s.indexOf('japones') !== -1 || s.indexOf('japanese') !== -1 || s === 'ja') {
+    return 'Japonés';
+  }
+  return null;
 }
 
 function extractSearchResults(html) {
@@ -91,18 +109,40 @@ function extractEpisodes(html, season, episode) {
 }
 
 function getMediaTitle(tmdbId, mediaType) {
-  var url = 'https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY + '&language=es-MX';
-  return fetchText(url)
-    .then(function(raw) {
-      var data = JSON.parse(raw);
-      var title = mediaType === 'movie' ? data.title : data.name;
-      var originalTitle = mediaType === 'movie' ? data.original_title : data.original_name;
-      return { title: title, originalTitle: originalTitle };
-    });
+  var base = 'https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId;
+  function req(url) {
+    return fetchText(url).then(function(raw) {
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }).catch(function() { return null; });
+  }
+
+  return Promise.all([
+    req(base + '?api_key=' + TMDB_API_KEY + '&language=es-MX'),
+    req(base + '?api_key=' + TMDB_API_KEY + '&language=es-ES'),
+    req(base + '?api_key=' + TMDB_API_KEY + '&language=en-US'),
+  ]).then(function(res) {
+    var esMx = res[0] || {};
+    var esEs = res[1] || {};
+    var enUs = res[2] || {};
+
+    var title = mediaType === 'movie' ? esMx.title : esMx.name;
+    var esTitle = mediaType === 'movie' ? esEs.title : esEs.name;
+    var enTitle = mediaType === 'movie' ? enUs.title : enUs.name;
+    var originalTitle = mediaType === 'movie' ? esMx.original_title : esMx.original_name;
+
+    return {
+      title: title || esTitle || enTitle || '',
+      esTitle: esTitle || '',
+      enTitle: enTitle || '',
+      originalTitle: originalTitle || ''
+    };
+  });
 }
 
 function resolveTheyTube(code, resolvePath, authParam, pageUrl) {
-  var resolveUrl = MAIN_URL + resolvePath + encodeURIComponent(code) + authParam;
+  var hostMatch = pageUrl.match(/^(https?:\/\/[^\/]+)/);
+  var baseHost = hostMatch ? hostMatch[1] : MAIN_URL;
+  var resolveUrl = baseHost + resolvePath + encodeURIComponent(code) + authParam;
   return fetchText(resolveUrl, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36', Referer: pageUrl }
   })
@@ -117,16 +157,20 @@ function resolveTheyTube(code, resolvePath, authParam, pageUrl) {
 }
 
 function searchSite(query) {
-  var searchUrl = MAIN_URL + '/?s=' + encodeURIComponent(query);
-  return fetchText(searchUrl, { headers: { Referer: MAIN_URL + '/', 'Accept-Language': 'es-MX,es;q=0.9' } })
-    .then(function(html) { return extractSearchResults(html); })
-    .catch(function() {
-      // Fallback domain if main is blocked/404 (GnulaHD rotates ww3/gnulahd)
-      var fbUrl = FALLBACK_URL + '/?s=' + encodeURIComponent(query);
-      return fetchText(fbUrl, { headers: { Referer: FALLBACK_URL + '/' } })
-        .then(function(html) { return extractSearchResults(html); })
-        .catch(function() { return []; });
-    });
+  var q = encodeURIComponent(query);
+  function tryMirror(idx) {
+    if (idx >= MIRRORS.length) return Promise.resolve([]);
+    var base = MIRRORS[idx];
+    var searchUrl = base + '/?s=' + q;
+    return fetchText(searchUrl, { headers: { Referer: base + '/', 'Accept-Language': 'es-MX,es;q=0.9' } })
+      .then(function(html) {
+        return extractSearchResults(html);
+      })
+      .catch(function() {
+        return tryMirror(idx + 1);
+      });
+  }
+  return tryMirror(0);
 }
 
 export function extractStreams(tmdbId, mediaType, season, episode) {
@@ -135,12 +179,29 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
   return getMediaTitle(tmdbId, tmdbType)
     .then(function(media) {
       var queries = [];
-      if (media.originalTitle) queries.push(media.originalTitle);
-      if (media.title && media.title !== media.originalTitle) queries.push(media.title);
+      var seen = {};
+      function addQ(t) {
+        if (!t || typeof t !== 'string') return;
+        var s = t.trim();
+        var k = normalizeText(s);
+        if (!k || seen[k]) return;
+        seen[k] = true;
+        queries.push(s);
+      }
+
+      addQ(media.originalTitle);
+      addQ(media.title);
+      addQ(media.esTitle);
+      addQ(media.enTitle);
+
       if (queries.length === 0) return [];
 
-      var normalizedOriginals = [normalizeText(media.originalTitle || '')];
-      var normalizedTitles = [normalizeText(media.title || '')];
+      var normalizedOriginals = [normalizeText(media.originalTitle || '')].filter(Boolean);
+      var normalizedTitles = [
+        normalizeText(media.title || ''),
+        normalizeText(media.esTitle || ''),
+        normalizeText(media.enTitle || '')
+      ].filter(Boolean);
       var expectedType = tmdbType;
 
       var bestTvScore = -1, bestTvUrl = null, bestTvType = 'movie';
@@ -167,8 +228,8 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
             qWords = qWords.concat(normalizedOriginals[n].split(' ').filter(Boolean));
           for (var n = 0; n < normalizedTitles.length; n++)
             qWords = qWords.concat(normalizedTitles[n].split(' ').filter(Boolean));
-          var unique = {};
-          qWords = qWords.filter(function(w) { if (unique[w]) return false; unique[w] = true; return true; });
+          var uq = {};
+          qWords = qWords.filter(function(w) { if (uq[w]) return false; uq[w] = true; return true; });
           var cWords = normalizedCand.split(' ').filter(Boolean);
           var qMatch = 0, cMatch = 0;
           for (var w = 0; w < qWords.length; w++) {
@@ -210,10 +271,10 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
 
       function trySlugProbe() {
         var slugs = [];
-        var seen = {};
-        [media.title, media.originalTitle].forEach(function(t) {
+        var seenSlugs = {};
+        [media.title, media.esTitle, media.enTitle, media.originalTitle].forEach(function(t) {
           var s = slugify(t);
-          if (s && !seen[s]) { seen[s] = true; slugs.push(s); }
+          if (s && !seenSlugs[s]) { seenSlugs[s] = true; slugs.push(s); }
         });
         var chain = Promise.resolve(null);
         slugs.forEach(function(slug) {
@@ -258,7 +319,7 @@ export function extractStreams(tmdbId, mediaType, season, episode) {
         // Fallback 1: word-level search (avengers -> vengadores via infinity/war)
         return tryWordSearch().then(function(wordTarget) {
           if (wordTarget) return getPageContent(wordTarget.url, tmdbType, wordTarget.type, season, episode, media);
-          // Fallback 2: direct slug probe (vengadores-infinity-war)
+          // Fallback 2: direct slug probe
           return trySlugProbe().then(function(slugTarget) {
             if (slugTarget) return getPageContent(slugTarget.url, tmdbType, slugTarget.type, season, episode, media);
             return [];
@@ -280,7 +341,11 @@ function getPageContent(pageUrl, mediaType, targetType, season, episode, media) 
       .then(function(tvHtml) {
         var epUrl = extractEpisodes(tvHtml, season, episode);
         if (!epUrl) return [];
-        if (epUrl.indexOf('http') !== 0) epUrl = MAIN_URL + epUrl;
+        if (epUrl.indexOf('http') !== 0) {
+          var hostMatch = pageUrl.match(/^(https?:\/\/[^\/]+)/);
+          var baseHost = hostMatch ? hostMatch[1] : MAIN_URL;
+          epUrl = baseHost + epUrl;
+        }
         return getPlayPage(epUrl);
       });
   }
@@ -292,7 +357,9 @@ function getPlayerLangs(pageUrl, playHtml) {
   var pidMatch = playHtml.match(/_gnrdPid\s*=\s*(\d+)/);
   var tokMatch = playHtml.match(/_gnrdTok\s*=\s*"([^"]+)"/);
   if (pidMatch && tokMatch) {
-    var apiUrl = MAIN_URL + '/wp-json/gnrd/v1/player?id=' + pidMatch[1] + '&t=' + encodeURIComponent(tokMatch[1]);
+    var hostMatch = pageUrl.match(/^(https?:\/\/[^\/]+)/);
+    var baseHost = hostMatch ? hostMatch[1] : MAIN_URL;
+    var apiUrl = baseHost + '/wp-json/gnrd/v1/player?id=' + pidMatch[1] + '&t=' + encodeURIComponent(tokMatch[1]);
     return fetchJson(apiUrl, {
       headers: { Referer: pageUrl }
     })
@@ -370,95 +437,99 @@ function getPlayPage(pageUrl) {
 }
 
 function buildStreamsFromLangs(pageUrl, playHtml, langs) {
+  var resolvePath = null, authParam = null;
+  var resolveMatch = playHtml.match(/var\s+RESOLVE\s*=\s*'([^']*)'\s*,\s*AUTH\s*=\s*'([^']*)'/);
+  if (resolveMatch) {
+    resolvePath = resolveMatch[1];
+    authParam = resolveMatch[2];
+  }
 
-      var resolvePath = null, authParam = null;
-      var resolveMatch = playHtml.match(/var\s+RESOLVE\s*=\s*'([^']*)'\s*,\s*AUTH\s*=\s*'([^']*)'/);
-      if (resolveMatch) {
-        resolvePath = resolveMatch[1];
-        authParam = resolveMatch[2];
-      }
+  var streams = [];
+  if (!langs || !langs.length) return streams;
 
-      var streams = [];
-      if (!langs || !langs.length) return streams;
+  // Clasificación de idiomas permitidos (METODO.md §5: Latino, Subtitulado, Inglés, Japonés; nada de España)
+  var langGroups = [];
+  for (var fl = 0; fl < langs.length; fl++) {
+    var tag = classifyLanguage(langs[fl].label);
+    if (tag) {
+      langGroups.push({ tag: tag, servers: langs[fl].servers || [] });
+    }
+  }
+  if (!langGroups.length) return streams;
 
-      // Filter Latino first, fallback to any language if Latino empty (for coverage)
-      var latinoLangs = [];
-      var otherLangs = [];
-      for (var fl = 0; fl < langs.length; fl++) {
-        var lbl = (langs[fl].label || '').toLowerCase();
-        if (lbl.indexOf('latino') !== -1 || lbl.indexOf('mx') !== -1) latinoLangs.push(langs[fl]);
-        else otherLangs.push(langs[fl]);
-      }
-      var useLangs = latinoLangs.length > 0 ? latinoLangs : langs;
-      var isFallback = latinoLangs.length === 0;
+  // Orden de preferencia: Latino primero, luego Subtitulado / Inglés / Japonés
+  langGroups.sort(function(a, b) {
+    if (a.tag === 'Latino' && b.tag !== 'Latino') return -1;
+    if (a.tag !== 'Latino' && b.tag === 'Latino') return 1;
+    return 0;
+  });
 
-      var promises = [];
-      for (var l = 0; l < useLangs.length; l++) {
-        var langobj = useLangs[l];
-        var label = langobj.label || '';
-        // keep original filter only when Latino exists; fallback uses any label
-        if (!isFallback && label.toLowerCase().indexOf('latino') === -1 && label.toLowerCase().indexOf('mx') === -1) continue;
+  var promises = [];
+  for (var g = 0; g < langGroups.length; g++) {
+    var grp = langGroups[g];
+    var langTag = grp.tag;
+    var servers = grp.servers;
 
-        var servers = langobj.servers || [];
-        for (var s = 0; s < servers.length; s++) {
-          var srv = servers[s];
-          var cleanSrc = (srv.src || '').replace(/\\\//g, '/');
-          if (!cleanSrc) continue;
-          if (cleanSrc.indexOf('//') === 0) cleanSrc = 'https:' + cleanSrc;
+    for (var s = 0; s < servers.length; s++) {
+      var srv = servers[s];
+      var cleanSrc = (srv.src || '').replace(/\\\//g, '/');
+      if (!cleanSrc) continue;
+      if (cleanSrc.indexOf('//') === 0) cleanSrc = 'https:' + cleanSrc;
 
-          if ((cleanSrc.indexOf('they.tube') !== -1 || cleanSrc.indexOf('the.tube') !== -1) && resolvePath && authParam) {
-            var codeMatch = cleanSrc.match(/the(?:y)?\.tube\/(?:e\/)?([A-Za-z0-9_-]+?)(?:\.html)?(?:[?#]|$)/i);
-            if (codeMatch) {
-               (function(src, title, lTag) {
-                 promises.push(
-                   resolveTheyTube(codeMatch[1], resolvePath, authParam, pageUrl)
-                     .then(function(result) {
-                       if (result) {
-                         streams.push({
-                           name: 'GnulaHD (' + (title || 'Tube') + ')',
-                           title: (result.quality || 'HD') + ' · ' + lTag + ' · ' + (title || 'Tube'),
-                           url: result.url,
-                           quality: result.quality || 'HD',
-                           headers: result.headers,
-                         });
-                       }
-                     })
-                 );
-               })(cleanSrc, srv.title, isFallback ? label : 'Latino');
-              continue;
-            }
-          }
-
-          var serverLabel = getServerLabel(cleanSrc);
-          var langTag = isFallback ? label : 'Latino';
-          (function(srcUrl, srvTitle, sLabel, lTag) {
-            var fixedUrl = mapDomain(srcUrl);
-            var resolver = getEmbedResolver(fixedUrl);
-            if (resolver) {
-              promises.push(
-                resolver(fixedUrl)
-                  .then(function(result) {
-                    if (result && result.url) {
-                      streams.push({
-                        name: 'GnulaHD Direct (' + (srvTitle || sLabel) + ')',
-                        title: (result.quality || 'HD') + ' · ' + lTag + ' · ' + (srvTitle || sLabel),
-                        url: result.url,
-                        quality: result.quality || 'HD',
-                        headers: result.headers,
-                      });
-                    }
-                  })
-                  .catch(function() {
-                    // Do nothing, skip non-working link
-                  })
-              );
-            }
-          })(cleanSrc, srv.title, serverLabel, langTag);
+      if ((cleanSrc.indexOf('they.tube') !== -1 || cleanSrc.indexOf('the.tube') !== -1) && resolvePath && authParam) {
+        var codeMatch = cleanSrc.match(/the(?:y)?\.tube\/(?:e\/)?([A-Za-z0-9_-]+?)(?:\.html)?(?:[?#]|$)/i);
+        if (codeMatch) {
+          (function(src, title, lTag) {
+            promises.push(
+              resolveTheyTube(codeMatch[1], resolvePath, authParam, pageUrl)
+                .then(function(result) {
+                  if (result) {
+                    streams.push({
+                      name: 'GnulaHD (' + (title || 'Tube') + ')',
+                      title: (result.quality || 'HD') + ' · ' + lTag + ' · ' + (title || 'Tube'),
+                      url: result.url,
+                      quality: result.quality || 'HD',
+                      language: lTag,
+                      headers: result.headers,
+                    });
+                  }
+                })
+            );
+          })(cleanSrc, srv.title, langTag);
+          continue;
         }
       }
 
-      if (promises.length > 0) {
-        return Promise.all(promises).then(function() { return streams; });
-      }
-      return streams;
+      var serverLabel = getServerLabel(cleanSrc);
+      (function(srcUrl, srvTitle, sLabel, lTag) {
+        var fixedUrl = mapDomain(srcUrl);
+        var resolver = getEmbedResolver(fixedUrl);
+        if (resolver) {
+          promises.push(
+            resolver(fixedUrl)
+              .then(function(result) {
+                if (result && result.url) {
+                  streams.push({
+                    name: 'GnulaHD Direct (' + (srvTitle || sLabel) + ')',
+                    title: (result.quality || 'HD') + ' · ' + lTag + ' · ' + (srvTitle || sLabel),
+                    url: result.url,
+                    quality: result.quality || 'HD',
+                    language: lTag,
+                    headers: result.headers,
+                  });
+                }
+              })
+              .catch(function() {
+                // Do nothing, skip non-working link
+              })
+          );
+        }
+      })(cleanSrc, srv.title, serverLabel, langTag);
+    }
+  }
+
+  if (promises.length > 0) {
+    return Promise.all(promises).then(function() { return streams; });
+  }
+  return streams;
 }

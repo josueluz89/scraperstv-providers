@@ -380,8 +380,8 @@
     {
       "id": "masters",
       "name": "Masters (GnulaHD)",
-      "description": "DESHABILITADO 2026-09-23: gnulahd.nu y ww3 devuelven 502. Scraper de GnulaHD en latino, castellano y subtitulado. Solo video directo reproducible (validados en vivo).",
-      "version": "1.8.4",
+      "description": "Revisado y verificado 2026-10-29: sitio activo en ww3.gnulahd.nu con espejos gnulahd.click y gnulahd.bid. Películas, series y anime en latino y subtitulado (castellano excluido por regla de idioma). Solo video directo reproducible (validados en vivo).",
+      "version": "1.9.0",
       "author": "Masters",
       "supportedTypes": [
         "movie",
@@ -391,7 +391,7 @@
       "enabled": true,
       "formats": [
         "mp4",
-        "mkv"
+        "m3u8"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=gnulahd.nu&sz=128",
       "contentLanguage": [
