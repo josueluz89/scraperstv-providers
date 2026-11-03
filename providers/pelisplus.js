@@ -1,6 +1,6 @@
 /**
  * pelisplus - Built from src/pelisplus/
- * Generated: 2026-10-22T08:24:47.571Z
+ * Generated: 2026-11-03T19:45:17.017Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -8779,7 +8779,25 @@ function findEpisodeHref(html, season, episode) {
   }
   return null;
 }
-function episodeStreams(candidate, season, episode) {
+function parsePanelServers(text) {
+  try {
+    var data = JSON.parse(text);
+    var list = data && data.data && data.data.servers;
+    if (!Array.isArray(list))
+      return [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var u = list[i] && list[i].url;
+      if (u && u.indexOf("http") === 0) {
+        out.push({ src: u, label: list[i].name || "", language: "Latino" });
+      }
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+function episodeStreamsLegacy(candidate, season, episode) {
   var base = SITE + "/" + candidate.section + "/" + candidate.slug;
   return fetchText(base, null, PAGE_TIMEOUT_MS).then(function(html) {
     var href = findEpisodeHref(html, season, episode) || "/" + candidate.section + "/" + candidate.slug + "/temporada/" + season + "/capitulo/" + episode;
@@ -8789,6 +8807,18 @@ function episodeStreams(candidate, season, episode) {
     return resolveServers(parseServers(html));
   }).catch(function() {
     return [];
+  });
+}
+function episodeStreams(candidate, season, episode) {
+  var panelUrl = SITE + "/" + candidate.section + "/" + candidate.slug + "/episodio/" + season + "/" + episode;
+  var referer = SITE + "/" + candidate.section + "/" + candidate.slug;
+  return fetchText(panelUrl, { headers: { Referer: referer } }, PAGE_TIMEOUT_MS).then(function(text) {
+    var servers = parsePanelServers(text);
+    if (servers.length)
+      return resolveServers(servers);
+    return episodeStreamsLegacy(candidate, season, episode);
+  }).catch(function() {
+    return episodeStreamsLegacy(candidate, season, episode);
   });
 }
 function extractStreams(tmdbId, mediaType, season, episode) {

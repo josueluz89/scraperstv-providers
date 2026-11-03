@@ -478,7 +478,32 @@ function findEpisodeHref(html, season, episode) {
   return null;
 }
 
-function episodeStreams(candidate, season, episode) {
+// Cambio del sitio 2026-11-03: la página de la serie ya no trae enlaces
+// /temporada/<s>/capitulo/<e>; los episodios son pestañas JS (#s1-e1) y
+// los servidores llegan por un panel JSON en
+//   /<section>/<slug>/episodio/<s>/<e>
+// (data-endpoint en la propia página de la serie, campo `servers` con
+// {name, url}). El flujo viejo queda como respaldo: si el panel no
+// trae servidores, se intenta la ruta antigua.
+function parsePanelServers(text) {
+  try {
+    var data = JSON.parse(text);
+    var list = data && data.data && data.data.servers;
+    if (!Array.isArray(list)) return [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var u = list[i] && list[i].url;
+      if (u && u.indexOf('http') === 0) {
+        out.push({ src: u, label: list[i].name || '', language: 'Latino' });
+      }
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+function episodeStreamsLegacy(candidate, season, episode) {
   var base = SITE + '/' + candidate.section + '/' + candidate.slug;
   return fetchText(base, null, PAGE_TIMEOUT_MS)
     .then(function (html) {
@@ -492,6 +517,19 @@ function episodeStreams(candidate, season, episode) {
     })
     .then(function (html) { return resolveServers(parseServers(html)); })
     .catch(function () { return []; });
+}
+
+function episodeStreams(candidate, season, episode) {
+  var panelUrl = SITE + '/' + candidate.section + '/' + candidate.slug +
+    '/episodio/' + season + '/' + episode;
+  var referer = SITE + '/' + candidate.section + '/' + candidate.slug;
+  return fetchText(panelUrl, { headers: { Referer: referer } }, PAGE_TIMEOUT_MS)
+    .then(function (text) {
+      var servers = parsePanelServers(text);
+      if (servers.length) return resolveServers(servers);
+      return episodeStreamsLegacy(candidate, season, episode);
+    })
+    .catch(function () { return episodeStreamsLegacy(candidate, season, episode); });
 }
 
 // ---------------------------------------------------------------------------

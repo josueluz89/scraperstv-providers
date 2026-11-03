@@ -1,6 +1,6 @@
 /**
  * pelisplusto - Built from src/pelisplusto/
- * Generated: 2026-10-22T08:14:53.363Z
+ * Generated: 2026-11-03T19:45:17.095Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -8729,7 +8729,25 @@ function findEpisodeUrl(html, season, episode) {
   }
   return null;
 }
-function episodeStreams(slug, season, episode) {
+function parsePanelServers(text) {
+  try {
+    var data = JSON.parse(text);
+    var list = data && data.data && data.data.servers;
+    if (!Array.isArray(list))
+      return [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var u = list[i] && list[i].url;
+      if (u && u.indexOf("http") === 0) {
+        out.push({ src: u, label: list[i].name || "" });
+      }
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+function episodeStreamsLegacy(slug, season, episode) {
   var basePath = slug.indexOf("anime/") === 0 ? SITE + "/" + slug : SITE + "/serie/" + slug;
   return fetchText(basePath, null, PAGE_MS).then(function(html) {
     var epUrl = findEpisodeUrl(html, season, episode);
@@ -8743,6 +8761,18 @@ function episodeStreams(slug, season, episode) {
     return resolveServers(parseServers(html));
   }).catch(function() {
     return [];
+  });
+}
+function episodeStreams(slug, season, episode) {
+  var basePath = slug.indexOf("anime/") === 0 ? SITE + "/" + slug : SITE + "/serie/" + slug;
+  var panelUrl = basePath + "/episodio/" + season + "/" + episode;
+  return fetchText(panelUrl, { headers: { Referer: basePath } }, PAGE_MS).then(function(text) {
+    var servers = parsePanelServers(text);
+    if (servers.length)
+      return resolveServers(servers);
+    return episodeStreamsLegacy(slug, season, episode);
+  }).catch(function() {
+    return episodeStreamsLegacy(slug, season, episode);
   });
 }
 function extractStreams(tmdbId, mediaType, season, episode) {

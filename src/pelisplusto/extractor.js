@@ -433,7 +433,31 @@ function findEpisodeUrl(html, season, episode) {
   return null;
 }
 
-function episodeStreams(slug, season, episode) {
+// Cambio del sitio 2026-11-03: la página de la serie ya no trae enlaces
+// /temporada/<s>/capitulo/<e>; los episodios son pestañas JS (#s1-e1) y
+// los servidores llegan por un panel JSON en
+//   <basePath>/episodio/<s>/<e>
+// (campo `servers` con {name, url}). El flujo viejo queda como respaldo:
+// si el panel no trae servidores, se intenta la ruta antigua.
+function parsePanelServers(text) {
+  try {
+    var data = JSON.parse(text);
+    var list = data && data.data && data.data.servers;
+    if (!Array.isArray(list)) return [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var u = list[i] && list[i].url;
+      if (u && u.indexOf('http') === 0) {
+        out.push({ src: u, label: list[i].name || '' });
+      }
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+function episodeStreamsLegacy(slug, season, episode) {
   var basePath = slug.indexOf('anime/') === 0
     ? SITE + '/' + slug
     : SITE + '/serie/' + slug;
@@ -448,6 +472,20 @@ function episodeStreams(slug, season, episode) {
     })
     .then(function(html) { return resolveServers(parseServers(html)); })
     .catch(function() { return []; });
+}
+
+function episodeStreams(slug, season, episode) {
+  var basePath = slug.indexOf('anime/') === 0
+    ? SITE + '/' + slug
+    : SITE + '/serie/' + slug;
+  var panelUrl = basePath + '/episodio/' + season + '/' + episode;
+  return fetchText(panelUrl, { headers: { Referer: basePath } }, PAGE_MS)
+    .then(function(text) {
+      var servers = parsePanelServers(text);
+      if (servers.length) return resolveServers(servers);
+      return episodeStreamsLegacy(slug, season, episode);
+    })
+    .catch(function() { return episodeStreamsLegacy(slug, season, episode); });
 }
 
 // ---------------------------------------------------------------------------
