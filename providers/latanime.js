@@ -1,6 +1,6 @@
 /**
  * latanime - Built from src/latanime/
- * Generated: 2026-10-27T17:50:43.149Z
+ * Generated: 2026-11-03T19:25:00.372Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -8267,12 +8267,13 @@ function filterWorkingStreams(streams, opts) {
 // src/latanime/index.js
 var PRESUPUESTO_MS = 55e3;
 var GUARDA_MS = 58e3;
+var EXTRACCION_MS = 35e3;
 function getStreams(tmdbId, mediaType, season, episode) {
   var tipo = String(mediaType || "").toLowerCase();
   if (tipo === "movie")
     return Promise.resolve([]);
   var inicio = Date.now();
-  var trabajo = extraer(tmdbId, tipo, season, episode, inicio + PRESUPUESTO_MS).catch(function() {
+  var trabajo = extraer(tmdbId, tipo, season, episode, inicio + EXTRACCION_MS).catch(function() {
     return [];
   }).then(function(streams) {
     if (!streams || !streams.length)

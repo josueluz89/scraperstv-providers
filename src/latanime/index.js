@@ -15,6 +15,15 @@ import { filterWorkingStreams } from '../shared/validate.js';
 // timeout de 12 s en src/shared/http.js.
 var PRESUPUESTO_MS = 55000;
 var GUARDA_MS = 58000;
+// Corrección 2026-11-03: la extracción NO puede usar todo el presupuesto.
+// Antes extraer recibía inicio + 55 s y, cuando el sitio iba lento, se
+// comía el tiempo de validación: la pasada en solitario dio 0 en 53-55 s
+// aunque había streams encontrados, porque al llegar a validar ya no
+// quedaba resto y el código devolvía []. La extracción tiene ahora su
+// propio tope de 35 s y la validación siempre conserva al menos 20 s
+// del presupuesto total (menos el rebase de un fetch en curso, 12 s
+// como máximo), así que un stream real ya no se tira por falta de aire.
+var EXTRACCION_MS = 35000;
 
 /**
  * Anime en latino desde latanime.org (nunca castellano).
@@ -27,7 +36,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
   var tipo = String(mediaType || '').toLowerCase();
   if (tipo === 'movie') return Promise.resolve([]); // el sitio no tiene películas
   var inicio = Date.now();
-  var trabajo = extraer(tmdbId, tipo, season, episode, inicio + PRESUPUESTO_MS)
+  var trabajo = extraer(tmdbId, tipo, season, episode, inicio + EXTRACCION_MS)
     .catch(function () {
       return [];
     })
