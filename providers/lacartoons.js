@@ -1,6 +1,6 @@
 /**
  * lacartoons - Built from src/lacartoons/
- * Generated: 2026-10-16T23:40:41.094Z
+ * Generated: 2026-11-05T01:58:48.839Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -6671,15 +6671,43 @@ function fetchWithRetry(url, options, retries, timeout) {
 // src/shared/rpmvid.js
 var import_crypto_js = __toESM(require_crypto_js());
 var EMBED_ORIGIN = "https://cubeembed.rpmvid.com";
+var TURBO_ORIGIN = "https://turboembed.com";
 var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
-var RPMVID_KEY_HEX = "6b69656d7469656e6d75613931316361";
-var RPMVID_IV_HEX = "313233343536373839306f6975797472";
-function decryptHex(hex) {
-  var keyWA = import_crypto_js.default.enc.Hex.parse(RPMVID_KEY_HEX);
-  var ivWA = import_crypto_js.default.enc.Hex.parse(RPMVID_IV_HEX);
-  var cipherParams = import_crypto_js.default.lib.CipherParams.create({ ciphertext: import_crypto_js.default.enc.Hex.parse(String(hex).trim()) });
-  var decrypted = import_crypto_js.default.AES.decrypt(cipherParams, keyWA, { iv: ivWA, mode: import_crypto_js.default.mode.CBC, padding: import_crypto_js.default.pad.Pkcs7 });
-  var plain = decrypted.toString(import_crypto_js.default.enc.Utf8);
+var TURBO_KEY_PREFIX_HEX = "1d54a1d53c1d56e1d6811d53c1d6831d4da1d4d41d4e81d7d91d7da1d7db";
+var TURBO_SALT_PREFIX_HEX = "1f5101f5dd1f5111f6aa1f6e126a1";
+function padRight32(s) {
+  var out = String(s);
+  while (out.length < 32)
+    out += "0";
+  return out;
+}
+function hexEncodeAscii(s) {
+  var out = "";
+  for (var i = 0; i < s.length; i++) {
+    var h = s.charCodeAt(i).toString(16);
+    out += h.length === 1 ? "0" + h : h;
+  }
+  return out;
+}
+function turboKeyHex() {
+  var daysHex = Math.floor(Date.now() / 864e5).toString(16);
+  return padRight32((TURBO_KEY_PREFIX_HEX + daysHex).slice(0, 32));
+}
+function turboIvHex(hostname) {
+  var iv = TURBO_SALT_PREFIX_HEX + hexEncodeAscii(hostname || "");
+  return padRight32(iv.slice(0, 32));
+}
+function turboEncrypt(plain, hostname) {
+  var key = import_crypto_js.default.enc.Hex.parse(turboKeyHex());
+  var iv = import_crypto_js.default.enc.Hex.parse(turboIvHex(hostname));
+  var enc = import_crypto_js.default.AES.encrypt(plain, key, { iv, mode: import_crypto_js.default.mode.CBC, padding: import_crypto_js.default.pad.Pkcs7 });
+  return enc.ciphertext.toString(import_crypto_js.default.enc.Hex);
+}
+function turboDecrypt(hex, hostname) {
+  var key = import_crypto_js.default.enc.Hex.parse(turboKeyHex());
+  var iv = import_crypto_js.default.enc.Hex.parse(turboIvHex(hostname));
+  var params = import_crypto_js.default.lib.CipherParams.create({ ciphertext: import_crypto_js.default.enc.Hex.parse(String(hex).trim()) });
+  var plain = import_crypto_js.default.AES.decrypt(params, key, { iv, mode: import_crypto_js.default.mode.CBC, padding: import_crypto_js.default.pad.Pkcs7 }).toString(import_crypto_js.default.enc.Utf8);
   if (!plain)
     throw new Error("empty decrypt");
   return JSON.parse(plain);
@@ -6719,44 +6747,58 @@ function isRpmvidIframe(iframeSrc) {
     return false;
   return iframeSrc.indexOf("rpmvid") !== -1 || iframeSrc.indexOf("cubeembed") !== -1;
 }
-function collectHlsUrls(data) {
-  var urls = [];
-  var origin = EMBED_ORIGIN;
-  function isIpUrl(u) {
-    return /^https?:\/\/\d+\.\d+\.\d+\.\d+/.test(u);
-  }
-  var candidates = [];
-  if (data.cfNative && data.cfNative.indexOf(".m3u8") !== -1)
-    candidates.push(data.cfNative);
-  if (data.source && data.source.indexOf(".m3u8") !== -1)
-    candidates.push(data.source);
-  if (data.hlsVideoTiktok) {
-    var rel = data.hlsVideoTiktok.indexOf("http") === 0 ? data.hlsVideoTiktok : origin + data.hlsVideoTiktok;
-    candidates.push(rel);
-  }
-  if (data.videoUrl && data.videoUrl.indexOf(".m3u8") !== -1)
-    candidates.push(data.videoUrl);
-  candidates.sort(function(a, b) {
-    return (isIpUrl(a) ? 1 : 0) - (isIpUrl(b) ? 1 : 0);
-  });
-  var seen = {};
-  for (var i = 0; i < candidates.length; i++) {
-    if (!seen[candidates[i]]) {
-      seen[candidates[i]] = 1;
-      urls.push(candidates[i]);
+function resolveTurboUrl(hash) {
+  return __async(this, null, function* () {
+    var url = EMBED_ORIGIN + "/api/public/resolve?file1=" + encodeURIComponent(hash);
+    var text = yield fetchText(url, {
+      headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN, "User-Agent": UA }
+    });
+    var data = null;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return null;
     }
-  }
-  return urls;
+    if (!data || !data.ok || !data.url)
+      return null;
+    return data.url;
+  });
+}
+function fetchTurboStream(turboUrl) {
+  return __async(this, null, function* () {
+    var u = new URL(turboUrl);
+    var hostname = u.hostname;
+    var slug = u.pathname.split("/").pop();
+    if (!slug)
+      return null;
+    var enc = turboEncrypt(slug, hostname);
+    var trackUrl = "https://" + hostname + "/api/stream/tracking?c=" + enc;
+    var res = yield fetchWithTimeout(trackUrl, {
+      headers: { Referer: turboUrl, Origin: "https://" + hostname, "User-Agent": UA }
+    });
+    var xt = null;
+    try {
+      xt = res.headers.get("x-tracking");
+    } catch (e) {
+      xt = null;
+    }
+    if (!xt)
+      return null;
+    var data = turboDecrypt(xt, hostname);
+    if (!data || !data.stream)
+      return null;
+    return data.stream;
+  });
 }
 function fetchVideoData(hash) {
   return __async(this, null, function* () {
-    var url = EMBED_ORIGIN + "/api/v1/video?id=" + encodeURIComponent(hash) + "&w=1280&h=720&r=lacartoons.com";
-    var hex = yield fetchText(url, {
-      headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN, "User-Agent": UA }
-    });
-    if (!/^[0-9a-f]+$/i.test(String(hex).trim()))
-      throw new Error("rpmvid not hex");
-    return decryptHex(hex);
+    var turboUrl = yield resolveTurboUrl(hash);
+    if (!turboUrl)
+      return null;
+    var stream = yield fetchTurboStream(turboUrl);
+    if (!stream)
+      return null;
+    return { stream };
   });
 }
 function resolveRpmvidStream(iframeSrc) {
@@ -6766,11 +6808,23 @@ function resolveRpmvidStream(iframeSrc) {
       if (!hash)
         return null;
       var data = yield fetchVideoData(hash);
-      var urls = collectHlsUrls(data);
+      if (!data || !data.stream)
+        return null;
+      var s = data.stream;
+      var urls = [];
+      var seen = {};
+      var order = ["tiktok", "hls", "direct"];
+      for (var i = 0; i < order.length; i++) {
+        var v = s[order[i]];
+        if (v && v.indexOf("http") === 0 && !seen[v]) {
+          seen[v] = 1;
+          urls.push(v);
+        }
+      }
       if (!urls.length)
         return null;
       return urls.map(function(u) {
-        return { url: u, quality: "720p", headers: { Referer: EMBED_ORIGIN + "/", Origin: EMBED_ORIGIN } };
+        return { url: u, quality: "720p", headers: { Referer: TURBO_ORIGIN + "/", Origin: TURBO_ORIGIN } };
       });
     } catch (e) {
       return null;
@@ -7940,10 +7994,21 @@ function extractStreams(tmdbId, mediaType, season, episode) {
     if (!media.title && !media.englishTitle)
       return [];
     var queries = buildQueries(media);
-    var searches = queries.map(function(q) {
-      return searchSite(q);
+    var searchBatches = [];
+    for (var b = 0; b < queries.length; b += 3) {
+      searchBatches.push(queries.slice(b, b + 3));
+    }
+    var searchChain = Promise.resolve([]);
+    searchBatches.forEach(function(batch) {
+      searchChain = searchChain.then(function(acc) {
+        return Promise.all(batch.map(function(q) {
+          return searchSite(q);
+        })).then(function(res) {
+          return acc.concat(res);
+        });
+      });
     });
-    return Promise.all(searches).then(function(results) {
+    return searchChain.then(function(results) {
       var cands = [];
       var seen = {};
       results.forEach(function(list) {

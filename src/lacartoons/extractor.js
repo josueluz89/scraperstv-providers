@@ -227,8 +227,25 @@ function extractStreams(tmdbId, mediaType, season, episode) {
   return getMediaTitle(tmdbId, tmdbType).then(function (media) {
     if (!media.title && !media.englishTitle) return [];
     var queries = buildQueries(media);
-    var searches = queries.map(function (q) { return searchSite(q); });
-    return Promise.all(searches).then(function (results) {
+    // Cambio 2026-11-04: las búsquedas NO van todas en paralelo. El
+    // 2026-11-04 las 12 en paralelo se abortaron todas a los 12 s
+    // (sitio que ahoga la ráfaga, mismo patrón que Latanime), mientras
+    // que en lotes de 3 sí responden (8 s para 8 consultas) con los
+    // mismos resultados. Se piden en lotes de 3, en orden, y se unen
+    // igual que antes, así que el scoring no cambia.
+    var searchBatches = [];
+    for (var b = 0; b < queries.length; b += 3) {
+      searchBatches.push(queries.slice(b, b + 3));
+    }
+    var searchChain = Promise.resolve([]);
+    searchBatches.forEach(function (batch) {
+      searchChain = searchChain.then(function (acc) {
+        return Promise.all(batch.map(function (q) { return searchSite(q); })).then(function (res) {
+          return acc.concat(res);
+        });
+      });
+    });
+    return searchChain.then(function (results) {
       var cands = [];
       var seen = {};
       results.forEach(function (list) {
