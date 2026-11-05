@@ -47,41 +47,34 @@ https://raw.githubusercontent.com/josueluz89/scraperstv-providers/main/providers
 Para comprobar que una dirección responde sin abrir la app, pégala en el navegador: tiene que
 mostrar el texto del fichero (o el JSON), no un 404.
 
-## Providers activos (19)
+## Providers activos (13)
 
 | Nombre | id | Películas | Series |
 |---|---|---|---|
 | CineCalidad | `cinecalidad` | sí | sí |
-| CineSRC | `cinesrc` | sí | sí |
 | Cuevana | `cuevana` | sí | sí |
 | Embed69 | `embed69` | sí | sí |
-| FuegoCine | `fuegocine` | sí | sí |
+| Fanpelis | `fanpelis` | sí | sí |
+| LaCartoons | `lacartoons` | — | sí |
 | LaMovie | `lamovie` | sí | sí |
 | Latanime (solo Latino) | `latanime` | — | sí |
 | Masters (GnulaHD) | `masters` | sí | sí |
-| Pelispedia | `pelispedia` | sí | sí |
+| PelisJuanita | `pelisjuanita` | sí | sí |
 | PelisPlusHD | `pelisplus` | sí | sí |
 | Pelisplusto | `pelisplusto` | sí | sí |
 | PoseidonHD2 | `poseidon` | sí | sí |
 | SeriesFlixHD | `seriesflix` | — | sí |
-| SeriesMetro | `seriesmetro` | sí | sí |
-| SeriesMetro KL | `seriesmetro_kl` | sí | sí |
-| SmartPelis | `smartpelis` | sí | sí |
-| TioPlus | `tioplus` | sí | sí |
-| Unlimplay | `unlimplay` | sí | sí |
-| VidSrc | `vidsrc` | sí | sí |
 
-## Providers apagados (4)
+## Providers apagados (3)
 
 Se quedan en el repo (con su causa) para no perder el trabajo: la app los ignora porque están
-`enabled: false`. Se apagaron el **2026-09-23**.
+`enabled: false`.
 
 | Nombre | id | Por qué está apagado |
 |---|---|---|
 | CineCalidad KL | `cinecalidad_kl` | cinecalidad.vg devuelve 503 y el provider termina con 0 embeds |
-| DeTodoPeliculas | `detodopeliculas` | detodopeliculas.nu no responde (timeout) y el bundle necesita los externos de Nuvio (crypto-js, Buffer) |
-| Fanpelis | `fanpelis` | fanpelis.to no responde (timeout) |
-| LaCartoons | `lacartoons` | lacartoons.com con timeout (0 bytes) |
+| DeTodoPeliculas | `detodopeliculas` | detodopeliculas.nu no responde (timeout) |
+| FuegoCine | `fuegocine` | blogs caídos |
 
 ## Añadir o arreglar un provider
 

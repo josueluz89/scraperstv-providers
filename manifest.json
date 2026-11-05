@@ -1,6 +1,6 @@
 {
   "name": "MasterScrap Providers",
-  "version": "1.15.7",
+  "version": "1.15.8",
   "scrapers": [
     {
       "id": "cinecalidad",
@@ -128,27 +128,6 @@
       ]
     },
     {
-      "id": "pelispedia",
-      "name": "Pelispedia",
-      "description": "Verificado 2026-09-23: Dune 2, 3 m3u8 de fastream; Breaking Bad S1E1, 2. Necesita la cabecera Accept o el CDN responde 403. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.4",
-      "author": "Masters",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/pelispedia.js",
-      "enabled": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
       "id": "pelisplus",
       "name": "PelisPlusHD",
       "description": "Reescrito 2026-10-07: solo espejo pelisplushd.bz (el .to quedo tras challenge de Cloudflare); los embeds embed69 se descifran (PoW+AES) y resuelven a m3u8 directo con los resolvers compartidos. Verificado: Breaking Bad S1E1, 1; Dune 2, 3. Solo video directo reproducible (validados en vivo).",
@@ -227,89 +206,6 @@
         "mp4"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=seriesflixhd.team&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "seriesmetro",
-      "name": "SeriesMetro",
-      "description": "Verificado 2026-09-23: Dune 2, 3; Breaking Bad S1E1, 2. Necesita la cabecera Accept o el CDN responde 403. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.4",
-      "author": "Masters",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/seriesmetro.js",
-      "enabled": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=www3.seriesmetro.net&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "seriesmetro_kl",
-      "name": "SeriesMetro KL",
-      "description": "Reescrito 2026-10-07: sin polyfills; eliminado el pre-fetch de calidad k() (duplicaba la redencion de tokens de fastream.to y el 403 mataba el enlace); el embed y el m3u8 se piden sin Accept: text/html (fastream emite tokens muertos con ese header); reintento ante payload envenenado del packer. Verificado: Fight Club, 1 (5/5 corridas); Breaking Bad S1E1, 1. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.5",
-      "author": "Masters",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/seriesmetro_kl.js",
-      "enabled": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=www3.seriesmetro.net&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "smartpelis",
-      "name": "SmartPelis",
-      "description": "Verificado 2026-09-23: Dune 2, 3; Breaking Bad S1E1, 2. Mismo fix de Accept que seriesmetro. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.4",
-      "author": "Masters",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/smartpelis.js",
-      "enabled": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=smartpelis.tv&sz=128",
-      "contentLanguage": [
-        "es"
-      ]
-    },
-    {
-      "id": "tioplus",
-      "name": "TioPlus",
-      "description": "Verificado 2026-09-23: Dune 2, 4; Breaking Bad S1E1, 9. Solo video directo reproducible (validados en vivo).",
-      "version": "1.0.5",
-      "author": "Masters",
-      "supportedTypes": [
-        "movie"
-      ],
-      "filename": "providers/tioplus.js",
-      "enabled": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=tioplus.app&sz=128",
       "contentLanguage": [
         "es"
       ]
