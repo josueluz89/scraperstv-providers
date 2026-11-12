@@ -1,6 +1,6 @@
 /**
  * masters - Built from src/masters/
- * Generated: 2026-11-12T20:48:39.180Z
+ * Generated: 2026-11-12T22:03:19.128Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7174,20 +7174,25 @@ function resolveFilemoonStream(embedUrl) {
               const best = pickBestByseSource(plain && plain.sources);
               if (best) {
                 const quality = yield detectQualityFromM3U8(best.url);
-                return { url: best.url, quality, headers: { Referer: tryOriginUrl + "/" } };
+                return { ok: { url: best.url, quality, headers: { Referer: tryOriginUrl + "/" } } };
               }
-              return null;
+              return { fail: "gone" };
             }
-            return null;
+            return { fail: "gone" };
           } catch (e) {
-            return null;
+            var msg = String(e && e.message || "");
+            if (msg.indexOf("HTTP 404") !== -1)
+              return { fail: "gone" };
+            return { fail: "blocked" };
           }
         });
       }
       for (var o = 0; o < origins.length; o++) {
-        var result = yield tryOrigin(origins[o]);
-        if (result)
-          return result;
+        var attempt = yield tryOrigin(origins[o]);
+        if (attempt.ok)
+          return attempt.ok;
+        if (attempt.fail === "gone")
+          return null;
       }
       return null;
     } catch (e) {

@@ -313,6 +313,12 @@ export async function resolveFilemoonStream(embedUrl) {
     // embed bloquea o cae. byse.sx devolvía 403 "access blocked on this
     // domain" desde ciertas IPs; los espejos responden con el playback
     // completo. Se prueba el origen del embed primero y luego cada espejo.
+    // REGRESIÓN 2026-11-12 (pelisjuanita Boys 1@36 s -> 0@55 s): probar los
+    // espejos en CADA fallo quemaba ~6 s por embed muerto. Por eso los
+    // espejos solo se prueban cuando el fallo NO es un 404: un 404 significa
+    // que el archivo está borrado del backend compartido y todos los
+    // espejos darán 404 también. Un 403, 5xx, error de red o timeout sí
+    // puede resolverse en otro dominio.
     var MIRRORS = [
       'https://bysevepoin.com',
       'https://filemoon.sx',
@@ -323,6 +329,7 @@ export async function resolveFilemoonStream(embedUrl) {
       if (MIRRORS[i] !== origin) origins.push(MIRRORS[i]);
     }
 
+    // Devuelve { ok: stream } o { fail: 'gone' | 'blocked' }.
     async function tryOrigin(tryOriginUrl) {
       // 1) API Byse (sitio actual).
       try {
@@ -338,21 +345,25 @@ export async function resolveFilemoonStream(embedUrl) {
           const best = pickBestByseSource(plain && plain.sources);
           if (best) {
             const quality = await detectQualityFromM3U8(best.url);
-            return { url: best.url, quality, headers: { Referer: tryOriginUrl + '/' } };
+            return { ok: { url: best.url, quality: quality, headers: { Referer: tryOriginUrl + '/' } } };
           }
-          return null;
+          return { fail: 'gone' };
         }
         // {"error": ...} o sin playback = video borrado / respuesta inesperada.
-        return null;
+        return { fail: 'gone' };
       } catch (e) {
-        // 404 (video borrado) u otro error de la API: probar el siguiente origen.
-        return null;
+        var msg = String((e && e.message) || '');
+        if (msg.indexOf('HTTP 404') !== -1) return { fail: 'gone' };
+        // 403, 5xx, error de red o timeout: el espejo puede servir.
+        return { fail: 'blocked' };
       }
     }
 
     for (var o = 0; o < origins.length; o++) {
-      var result = await tryOrigin(origins[o]);
-      if (result) return result;
+      var attempt = await tryOrigin(origins[o]);
+      if (attempt.ok) return attempt.ok;
+      // Archivo borrado: ningún espejo lo tiene. Dominio bloqueado: seguir.
+      if (attempt.fail === 'gone') return null;
     }
     return null;
   } catch (e) {
