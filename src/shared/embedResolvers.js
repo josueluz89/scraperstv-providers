@@ -308,30 +308,53 @@ export async function resolveFilemoonStream(embedUrl) {
     const origin = getUrlOrigin(embedUrl);
     if (!origin) return null;
 
-    // 1) API Byse (sitio actual).
-    try {
-      const data = await fetchJson(origin + '/api/videos/' + code + '/', {
-        headers: {
-          'Referer': embedUrl,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json,*/*;q=0.8'
+    // Espejos del backend Byse/FileMoon verificados 2026-11-12: sirven el
+    // mismo video (mismo id) por /api/videos/<code>/ cuando el dominio del
+    // embed bloquea o cae. byse.sx devolvía 403 "access blocked on this
+    // domain" desde ciertas IPs; los espejos responden con el playback
+    // completo. Se prueba el origen del embed primero y luego cada espejo.
+    var MIRRORS = [
+      'https://bysevepoin.com',
+      'https://filemoon.sx',
+      'https://bysebuho.com'
+    ];
+    var origins = [origin];
+    for (var i = 0; i < MIRRORS.length; i++) {
+      if (MIRRORS[i] !== origin) origins.push(MIRRORS[i]);
+    }
+
+    async function tryOrigin(tryOriginUrl) {
+      // 1) API Byse (sitio actual).
+      try {
+        const data = await fetchJson(tryOriginUrl + '/api/videos/' + code + '/', {
+          headers: {
+            'Referer': embedUrl,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json,*/*;q=0.8'
+          }
+        });
+        if (data && data.playback && data.playback.payload) {
+          const plain = byseDecryptPlayback(data.playback);
+          const best = pickBestByseSource(plain && plain.sources);
+          if (best) {
+            const quality = await detectQualityFromM3U8(best.url);
+            return { url: best.url, quality, headers: { Referer: tryOriginUrl + '/' } };
+          }
+          return null;
         }
-      });
-      if (data && data.playback && data.playback.payload) {
-        const plain = byseDecryptPlayback(data.playback);
-        const best = pickBestByseSource(plain && plain.sources);
-        if (best) {
-          const quality = await detectQualityFromM3U8(best.url);
-          return { url: best.url, quality, headers: { Referer: origin + '/' } };
-        }
+        // {"error": ...} o sin playback = video borrado / respuesta inesperada.
+        return null;
+      } catch (e) {
+        // 404 (video borrado) u otro error de la API: probar el siguiente origen.
         return null;
       }
-      // {"error": ...} o sin playback = video borrado / respuesta inesperada.
-      return null;
-    } catch (e) {
-      // 404 (video borrado) u otro error de la API: no hay fallback útil.
-      return null;
     }
+
+    for (var o = 0; o < origins.length; o++) {
+      var result = await tryOrigin(origins[o]);
+      if (result) return result;
+    }
+    return null;
   } catch (e) {
     return null;
   }

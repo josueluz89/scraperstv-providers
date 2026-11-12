@@ -1,6 +1,6 @@
 /**
  * masters - Built from src/masters/
- * Generated: 2026-10-29T21:23:00.451Z
+ * Generated: 2026-11-12T20:48:39.180Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7149,27 +7149,47 @@ function resolveFilemoonStream(embedUrl) {
       const origin = getUrlOrigin(embedUrl);
       if (!origin)
         return null;
-      try {
-        const data = yield fetchJson(origin + "/api/videos/" + code + "/", {
-          headers: {
-            "Referer": embedUrl,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json,*/*;q=0.8"
+      var MIRRORS2 = [
+        "https://bysevepoin.com",
+        "https://filemoon.sx",
+        "https://bysebuho.com"
+      ];
+      var origins = [origin];
+      for (var i = 0; i < MIRRORS2.length; i++) {
+        if (MIRRORS2[i] !== origin)
+          origins.push(MIRRORS2[i]);
+      }
+      function tryOrigin(tryOriginUrl) {
+        return __async(this, null, function* () {
+          try {
+            const data = yield fetchJson(tryOriginUrl + "/api/videos/" + code + "/", {
+              headers: {
+                "Referer": embedUrl,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json,*/*;q=0.8"
+              }
+            });
+            if (data && data.playback && data.playback.payload) {
+              const plain = byseDecryptPlayback(data.playback);
+              const best = pickBestByseSource(plain && plain.sources);
+              if (best) {
+                const quality = yield detectQualityFromM3U8(best.url);
+                return { url: best.url, quality, headers: { Referer: tryOriginUrl + "/" } };
+              }
+              return null;
+            }
+            return null;
+          } catch (e) {
+            return null;
           }
         });
-        if (data && data.playback && data.playback.payload) {
-          const plain = byseDecryptPlayback(data.playback);
-          const best = pickBestByseSource(plain && plain.sources);
-          if (best) {
-            const quality = yield detectQualityFromM3U8(best.url);
-            return { url: best.url, quality, headers: { Referer: origin + "/" } };
-          }
-          return null;
-        }
-        return null;
-      } catch (e) {
-        return null;
       }
+      for (var o = 0; o < origins.length; o++) {
+        var result = yield tryOrigin(origins[o]);
+        if (result)
+          return result;
+      }
+      return null;
     } catch (e) {
       return null;
     }
