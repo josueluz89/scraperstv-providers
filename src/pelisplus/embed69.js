@@ -2,10 +2,15 @@
 // necesita pelisplushd: la pagina `embed69.org/f/<imdb_id>/` que hoy sirve el
 // detalle de cada pelicula/serie.
 //
-//  1. La pagina trae `dataLink` (JSON con los embeds CIFRADOS) y un proof-of-work.
-//  2. Hay que hallar el nonce tal que sha256(POW_CHALLENGE + nonce) empiece con
-//     POW_DIFFICULTY ceros; la clave AES-256 es sha256(POW_CHALLENGE + nonce + POW_SALT)
-//     (32 bytes crudos).
+//  1. La pagina la protege Anubis (Techaro, reto PoW JS): hay que pasar el
+//     reto (sha256(randomData + nonce) con N ceros hex, `fetchEmbed69Page`)
+//     y re-pedir la pagina con la cookie de auth que devuelve pass-challenge.
+//     Si el pase falla, se prueba el espejo serieskao.top/vidurl/<id>/, mismo
+//     motor sin Anubis.
+//  2. La pagina real trae `dataLink` (JSON con los embeds CIFRADOS) y la clave
+//     directa: SHA-256(LINK_CHALLENGE + LINK_SALT), sin PoW (el esquema viejo
+//     POW_CHALLENGE + nonce + POW_SALT se conserva como respaldo por si el
+//     sitio revierte).
 //  3. Cada `link` viene en base64: IV = primeros 16 bytes, resto = ciphertext,
 //     AES-256-CBC con PKCS7. Al descifrar sale la URL del host directo.
 //  4. voe/rapidvideo se descartan (el player de la app no los reproduce).
@@ -13,7 +18,11 @@
 // SHA-256 y AES-256-CBC estan implementados a mano (sin Buffer/atob/crypto), asi
 // que corren igual en Node y en el QuickJS de Nuvio. Copiados 1:1 del provider
 // embed69, que los tiene verificados byte a byte contra node:crypto.
-import { fetchText } from '../shared/http.js';
+// El pase de Anubis exige que reto, pass-challenge y pagina salgan desde la
+// misma IP (la cookie va atada a ella): en la app (IP estable) funciona; en
+// una maquina con IP de salida rotativa por conexion no se puede verificar
+// de punta a punta (ver INFORME del 2026-11-13).
+import { fetchText, fetchWithTimeout } from '../shared/http.js';
 
 var REFERER = 'https://embed69.org/';
 var ORIGEN = 'https://embed69.org';
@@ -392,16 +401,163 @@ function idiomaLabel(idioma) {
   return 'Latino';
 }
 
+// Constantes de la clave directa (esquema actual): LINK_CHALLENGE y LINK_SALT
+// van en la propia pagina; la clave es SHA-256(LINK_CHALLENGE + LINK_SALT).
+function extractLinkConstants(html) {
+  var out = {};
+  var m = html.match(/LINK_CHALLENGE\s*=\s*['"]([a-f0-9]+)['"]/i);
+  if (m) out.challenge = m[1];
+  m = html.match(/LINK_SALT\s*=\s*['"]([a-f0-9]+)['"]/i);
+  if (m) out.salt = m[1];
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Pase del reto Anubis (Techaro) que protege embed69.org
+// ---------------------------------------------------------------------------
+// La pagina del reto trae <script id="anubis_challenge"> con el JSON
+// {rules:{algorithm:"fast",difficulty:N}, challenge:{id, randomData, ...}}.
+// El PoW es el mismo patron del dataLink viejo: hallar el nonce tal que
+// sha256(randomData + nonce) empiece con N ceros hex (dificultad 4 hoy,
+// ~65k intentos, ~3 s con el SHA-256 puro en Node). Luego se hace GET a
+// /.within.website/x/cmd/anubis/api/pass-challenge con id/response/nonce/
+// redir/elapsedTime; el servidor contesta 302 y pone la cookie de auth
+// (JWT, valida 7 dias, atada a la IP). Con esa cookie la pagina real ya
+// sale. Todo sin navegador y sin Buffer/atob/crypto (QuickJS-safe).
+function extractAnubisChallenge(html) {
+  var m = html.match(/<script id="anubis_challenge"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) return null;
+  try {
+    var j = JSON.parse(m[1]);
+    var c = j.challenge || j;
+    if (!c.id || !c.randomData) return null;
+    var diff = c.difficulty || (j.rules && j.rules.difficulty) || 4;
+    return { id: c.id, randomData: c.randomData, difficulty: diff };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Guarda en `jar` las cookies de una respuesta (getSetCookie si existe,
+// si no el header set-cookie combinado). Solo guarda nombre=valor.
+function collectCookies(res, jar) {
+  var sc = null;
+  try {
+    if (res.headers && typeof res.headers.getSetCookie === 'function') {
+      sc = res.headers.getSetCookie();
+    }
+  } catch (e) { sc = null; }
+  if (!sc || !sc.length) {
+    var one = null;
+    try { one = res.headers && res.headers.get ? res.headers.get('set-cookie') : null; } catch (e) { one = null; }
+    if (one) sc = String(one).split(/,\s*(?=[^;,=\s]+\=)/);
+  }
+  if (!sc) return;
+  for (var i = 0; i < sc.length; i++) {
+    var pair = String(sc[i]).split(';')[0].trim();
+    var eq = pair.indexOf('=');
+    if (eq > 0) jar[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+}
+
+function cookieHeader(jar) {
+  var parts = [];
+  for (var k in jar) {
+    if (Object.prototype.hasOwnProperty.call(jar, k)) parts.push(k + '=' + jar[k]);
+  }
+  return parts.join('; ');
+}
+
+// Espejo del mismo motor Embed69 SIN el reto Anubis (verificado 2026-11-13:
+// serieskao.top/vidurl/<imdb>/ sirve la misma pagina con dataLink y
+// LINK_CHALLENGE, sin anubis_challenge). Solo para /f/<id>/; /video/ no
+// tiene equivalente probado en el espejo.
+function mirrorSerieskaoUrl(u) {
+  var m = String(u || '').match(/^https:\/\/embed69\.org\/f\/(.+)$/i);
+  if (!m) return null;
+  return 'https://serieskao.top/vidurl/' + m[1];
+}
+
+// Pide una pagina de embed69.org pasando el reto Anubis si aparece.
+// Devuelve el HTML de la pagina real; si no hay reto, el HTML tal cual;
+// si el pase falla, el HTML del reto (decodeEmbed69Page dara []).
+export function fetchEmbed69Page(url, options, timeoutMs) {
+  var t = timeoutMs || 15000;
+  var baseHeaders = (options && options.headers) || {};
+  var jar = {};
+  function get(u, extraHeaders, redirect) {
+    var opts = { headers: Object.assign({}, baseHeaders, extraHeaders || {}) };
+    if (redirect) opts.redirect = redirect;
+    return fetchWithTimeout(u, opts, t);
+  }
+  // Espejo serieskao.top para /f/<id>/: si el pase Anubis falla (p. ej. IP
+  // de salida rotativa), el espejo sirve la misma pagina sin reto.
+  function tryMirror(u) {
+    var mu = mirrorSerieskaoUrl(u);
+    if (!mu) return Promise.resolve(null);
+    return get(mu, { 'Referer': 'https://serieskao.top/', 'Origin': 'https://serieskao.top' }, 'follow')
+      .then(function (res) {
+        if (!res) return null;
+        return res.text().then(function (html) {
+          if (extractAnubisChallenge(html)) return null;
+          return html;
+        });
+      })
+      .catch(function () { return null; });
+  }
+  function withMirrorFallback(html) {
+    if (!extractAnubisChallenge(html)) return Promise.resolve(html);
+    return tryMirror(url).then(function (m) { return m || html; });
+  }
+  return get(url, null, 'follow').then(function (res) {
+    return res.text().then(function (html) {
+      collectCookies(res, jar);
+      var ch = extractAnubisChallenge(html);
+      if (!ch) return html;
+      var t0 = Date.now();
+      var nonce = solvePow(ch.randomData, ch.difficulty, 500000);
+      if (nonce === null) return withMirrorFallback(html);
+      var hash = sha256Hex(ch.randomData + nonce);
+      var elapsed = Date.now() - t0;
+      var pass = ORIGEN + '/.within.website/x/cmd/anubis/api/pass-challenge'
+        + '?id=' + encodeURIComponent(ch.id)
+        + '&response=' + hash
+        + '&nonce=' + nonce
+        + '&redir=' + encodeURIComponent(url)
+        + '&elapsedTime=' + elapsed;
+      return get(pass, { 'Cookie': cookieHeader(jar), 'Referer': url }, 'manual')
+        .then(function (res2) {
+          collectCookies(res2, jar);
+          var loc = null;
+          try { loc = res2.headers.get('location'); } catch (e) { loc = null; }
+          var target = loc || url;
+          return get(target, { 'Cookie': cookieHeader(jar), 'Referer': pass }, 'follow');
+        })
+        .then(function (res3) { return res3.text(); })
+        .then(function (html2) { return withMirrorFallback(html2); })
+        .catch(function () { return withMirrorFallback(html); });
+    });
+  });
+}
+
 // Descifra una pagina embed69 (/f/<id>/, /video/<id>/ y tambien /uqlink.php) y
 // devuelve [{servidor, url, idioma, label}] con los hosts directos, o [].
 export function decodeEmbed69Page(html) {
   var dataLink = extractDataLink(html);
   if (!dataLink || !dataLink.length) return [];
-  var pow = extractPowConstants(html);
-  if (!pow.challenge) return [];
-  var nonce = solvePow(pow.challenge, pow.difficulty);
-  if (nonce === null) return [];
-  var key = aesKeyBytes(pow.challenge, nonce, pow.salt || '');
+  var key = null;
+  var link = extractLinkConstants(html);
+  if (link.challenge) {
+    // Esquema actual (2026-11-13): clave directa, sin PoW.
+    key = aesKeyBytes(link.challenge, '', link.salt || '');
+  } else {
+    // Esquema viejo (POW_CHALLENGE + nonce + POW_SALT), por si el sitio revierte.
+    var pow = extractPowConstants(html);
+    if (!pow.challenge) return [];
+    var nonce = solvePow(pow.challenge, pow.difficulty);
+    if (nonce === null) return [];
+    key = aesKeyBytes(pow.challenge, nonce, pow.salt || '');
+  }
   var out = [];
   var seen = {};
   for (var i = 0; i < dataLink.length; i++) {

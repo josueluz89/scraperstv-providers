@@ -104,6 +104,19 @@ export function mapDomain(url) {
   return result;
 }
 
+// El player trae dos formas del mismo video: el endpoint /stream/ directo
+// (fiable: la validación lo acepta siempre) y el .urlset de premilkyway
+// (su token ?t= da 403 en la validación). El orden en la página varía de
+// una petición a otra, así que tomar "el primero" daba 0 la mitad de las
+// veces. Preferir /stream/; si solo hay urlset, usarlo igual.
+function pickWishCandidate(cands) {
+  if (!cands || !cands.length) return null;
+  for (var i = 0; i < cands.length; i++) {
+    if (cands[i].indexOf('/stream/') !== -1) return cands[i];
+  }
+  return cands[0];
+}
+
 export async function resolveHLSWishStream(embedUrl) {
   try {
     const base = mapDomain(embedUrl);
@@ -130,23 +143,26 @@ export async function resolveHLSWishStream(embedUrl) {
     }
     if (!html) return null;
 
+    // Juntar TODOS los candidatos (file: + desempaquetados) y preferir el
+    // /stream/ directo sobre el .urlset (ver pickWishCandidate): el file:
+    // a veces trae el urlset y saltarse el desempaquetado dejaba el 403.
+    var allCands = [];
     const fileMatch = html.match(/file\s*:\s*["']([^"']+)["']/i);
-    if (fileMatch) {
-      let fileUrl = fileMatch[1];
+    if (fileMatch && allCands.indexOf(fileMatch[1]) === -1) allCands.push(fileMatch[1]);
+    const unpacked = unpackPacked(html);
+    if (unpacked) {
+      var reM = /["']([^"']{30,}\.m3u8[^"']*)['"]/gi;
+      var mm;
+      while ((mm = reM.exec(unpacked)) !== null) {
+        if (allCands.indexOf(mm[1]) === -1) allCands.push(mm[1]);
+      }
+    }
+    const picked = pickWishCandidate(allCands);
+    if (picked) {
+      let fileUrl = picked;
       if (fileUrl.startsWith('/')) fileUrl = origin + fileUrl;
       const quality = await detectQualityFromM3U8(fileUrl);
       return { url: fileUrl, quality, headers: { Referer: origin + '/' } };
-    }
-
-    const unpacked = unpackPacked(html);
-    if (unpacked) {
-      const srcMatch = unpacked.match(/["']([^"']{30,}\.m3u8[^"']*)['"]/i);
-      if (srcMatch) {
-        let fileUrl = srcMatch[1];
-        if (fileUrl.startsWith('/')) fileUrl = origin + fileUrl;
-        const quality = await detectQualityFromM3U8(fileUrl);
-        return { url: fileUrl, quality, headers: { Referer: origin + '/' } };
-      }
     }
 
     return null;

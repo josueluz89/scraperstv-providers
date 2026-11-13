@@ -22,7 +22,7 @@
 
 import { fetchText, fetchJson } from '../shared/http.js';
 import { getEmbedResolver, mapDomain } from '../shared/embedResolvers.js';
-import { decodeEmbed69Page, resolveHostStream, familyOf } from './embed69.js';
+import { decodeEmbed69Page, resolveHostStream, familyOf, fetchEmbed69Page } from './embed69.js';
 
 // ---------------------------------------------------------------------------
 // Configuración
@@ -337,10 +337,12 @@ function resolveEntry(entry) {
   return resolveViaShared(entry.url, label, entry.language, entry.url, headers);
 }
 
-// Página embed69.org/f/<id>/: trae el dataLink cifrado (PoW + AES-256-CBC)
-// que decodeEmbed69Page — función SINCRÓNICA — convierte en entradas.
+// Página embed69.org/f/<id>/: trae el dataLink cifrado (clave directa
+// LINK_CHALLENGE/LINK_SALT + AES-256-CBC) que decodeEmbed69Page — función
+// SINCRÓNICA — convierte en entradas. fetchEmbed69Page pasa el reto Anubis
+// del sitio si aparece.
 function resolveEmbed69(src) {
-  return fetchText(src, {
+  return fetchEmbed69Page(src, {
     headers: {
       'X-Requested-With': 'XMLHttpRequest',
       Referer: SITE + '/',

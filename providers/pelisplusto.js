@@ -1,6 +1,6 @@
 /**
  * pelisplusto - Built from src/pelisplusto/
- * Generated: 2026-11-03T19:45:17.095Z
+ * Generated: 2026-11-13T16:10:18.376Z
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -6941,6 +6941,15 @@ function mapDomain(url) {
   }
   return result;
 }
+function pickWishCandidate(cands) {
+  if (!cands || !cands.length)
+    return null;
+  for (var i = 0; i < cands.length; i++) {
+    if (cands[i].indexOf("/stream/") !== -1)
+      return cands[i];
+  }
+  return cands[0];
+}
 function resolveHLSWishStream(embedUrl) {
   return __async(this, null, function* () {
     try {
@@ -6970,24 +6979,26 @@ function resolveHLSWishStream(embedUrl) {
       }
       if (!html)
         return null;
+      var allCands = [];
       const fileMatch = html.match(/file\s*:\s*["']([^"']+)["']/i);
-      if (fileMatch) {
-        let fileUrl = fileMatch[1];
+      if (fileMatch && allCands.indexOf(fileMatch[1]) === -1)
+        allCands.push(fileMatch[1]);
+      const unpacked = unpackPacked(html);
+      if (unpacked) {
+        var reM = /["']([^"']{30,}\.m3u8[^"']*)['"]/gi;
+        var mm;
+        while ((mm = reM.exec(unpacked)) !== null) {
+          if (allCands.indexOf(mm[1]) === -1)
+            allCands.push(mm[1]);
+        }
+      }
+      const picked = pickWishCandidate(allCands);
+      if (picked) {
+        let fileUrl = picked;
         if (fileUrl.startsWith("/"))
           fileUrl = origin + fileUrl;
         const quality = yield detectQualityFromM3U8(fileUrl);
         return { url: fileUrl, quality, headers: { Referer: origin + "/" } };
-      }
-      const unpacked = unpackPacked(html);
-      if (unpacked) {
-        const srcMatch = unpacked.match(/["']([^"']{30,}\.m3u8[^"']*)['"]/i);
-        if (srcMatch) {
-          let fileUrl = srcMatch[1];
-          if (fileUrl.startsWith("/"))
-            fileUrl = origin + fileUrl;
-          const quality = yield detectQualityFromM3U8(fileUrl);
-          return { url: fileUrl, quality, headers: { Referer: origin + "/" } };
-        }
       }
       return null;
     } catch (e) {
@@ -7149,27 +7160,52 @@ function resolveFilemoonStream(embedUrl) {
       const origin = getUrlOrigin(embedUrl);
       if (!origin)
         return null;
-      try {
-        const data = yield fetchJson(origin + "/api/videos/" + code + "/", {
-          headers: {
-            "Referer": embedUrl,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json,*/*;q=0.8"
+      var MIRRORS = [
+        "https://bysevepoin.com",
+        "https://filemoon.sx",
+        "https://bysebuho.com"
+      ];
+      var origins = [origin];
+      for (var i = 0; i < MIRRORS.length; i++) {
+        if (MIRRORS[i] !== origin)
+          origins.push(MIRRORS[i]);
+      }
+      function tryOrigin(tryOriginUrl) {
+        return __async(this, null, function* () {
+          try {
+            const data = yield fetchJson(tryOriginUrl + "/api/videos/" + code + "/", {
+              headers: {
+                "Referer": embedUrl,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json,*/*;q=0.8"
+              }
+            });
+            if (data && data.playback && data.playback.payload) {
+              const plain = byseDecryptPlayback(data.playback);
+              const best = pickBestByseSource(plain && plain.sources);
+              if (best) {
+                const quality = yield detectQualityFromM3U8(best.url);
+                return { ok: { url: best.url, quality, headers: { Referer: tryOriginUrl + "/" } } };
+              }
+              return { fail: "gone" };
+            }
+            return { fail: "gone" };
+          } catch (e) {
+            var msg = String(e && e.message || "");
+            if (msg.indexOf("HTTP 404") !== -1)
+              return { fail: "gone" };
+            return { fail: "blocked" };
           }
         });
-        if (data && data.playback && data.playback.payload) {
-          const plain = byseDecryptPlayback(data.playback);
-          const best = pickBestByseSource(plain && plain.sources);
-          if (best) {
-            const quality = yield detectQualityFromM3U8(best.url);
-            return { url: best.url, quality, headers: { Referer: origin + "/" } };
-          }
-          return null;
-        }
-        return null;
-      } catch (e) {
-        return null;
       }
+      for (var o = 0; o < origins.length; o++) {
+        var attempt = yield tryOrigin(origins[o]);
+        if (attempt.ok)
+          return attempt.ok;
+        if (attempt.fail === "gone")
+          return null;
+      }
+      return null;
     } catch (e) {
       return null;
     }
@@ -8017,17 +8053,156 @@ function idiomaLabel(idioma) {
     return "Espa\xF1ol";
   return "Latino";
 }
+function extractLinkConstants(html) {
+  var out = {};
+  var m = html.match(/LINK_CHALLENGE\s*=\s*['"]([a-f0-9]+)['"]/i);
+  if (m)
+    out.challenge = m[1];
+  m = html.match(/LINK_SALT\s*=\s*['"]([a-f0-9]+)['"]/i);
+  if (m)
+    out.salt = m[1];
+  return out;
+}
+function extractAnubisChallenge(html) {
+  var m = html.match(/<script id="anubis_challenge"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!m)
+    return null;
+  try {
+    var j = JSON.parse(m[1]);
+    var c = j.challenge || j;
+    if (!c.id || !c.randomData)
+      return null;
+    var diff = c.difficulty || j.rules && j.rules.difficulty || 4;
+    return { id: c.id, randomData: c.randomData, difficulty: diff };
+  } catch (e) {
+    return null;
+  }
+}
+function collectCookies(res, jar) {
+  var sc = null;
+  try {
+    if (res.headers && typeof res.headers.getSetCookie === "function") {
+      sc = res.headers.getSetCookie();
+    }
+  } catch (e) {
+    sc = null;
+  }
+  if (!sc || !sc.length) {
+    var one = null;
+    try {
+      one = res.headers && res.headers.get ? res.headers.get("set-cookie") : null;
+    } catch (e) {
+      one = null;
+    }
+    if (one)
+      sc = String(one).split(/,\s*(?=[^;,=\s]+\=)/);
+  }
+  if (!sc)
+    return;
+  for (var i = 0; i < sc.length; i++) {
+    var pair = String(sc[i]).split(";")[0].trim();
+    var eq = pair.indexOf("=");
+    if (eq > 0)
+      jar[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+}
+function cookieHeader(jar) {
+  var parts = [];
+  for (var k in jar) {
+    if (Object.prototype.hasOwnProperty.call(jar, k))
+      parts.push(k + "=" + jar[k]);
+  }
+  return parts.join("; ");
+}
+function mirrorSerieskaoUrl(u) {
+  var m = String(u || "").match(/^https:\/\/embed69\.org\/f\/(.+)$/i);
+  if (!m)
+    return null;
+  return "https://serieskao.top/vidurl/" + m[1];
+}
+function fetchEmbed69Page(url, options, timeoutMs) {
+  var t = timeoutMs || 15e3;
+  var baseHeaders = options && options.headers || {};
+  var jar = {};
+  function get(u, extraHeaders, redirect) {
+    var opts = { headers: Object.assign({}, baseHeaders, extraHeaders || {}) };
+    if (redirect)
+      opts.redirect = redirect;
+    return fetchWithTimeout(u, opts, t);
+  }
+  function tryMirror(u) {
+    var mu = mirrorSerieskaoUrl(u);
+    if (!mu)
+      return Promise.resolve(null);
+    return get(mu, { "Referer": "https://serieskao.top/", "Origin": "https://serieskao.top" }, "follow").then(function(res) {
+      if (!res)
+        return null;
+      return res.text().then(function(html) {
+        if (extractAnubisChallenge(html))
+          return null;
+        return html;
+      });
+    }).catch(function() {
+      return null;
+    });
+  }
+  function withMirrorFallback(html) {
+    if (!extractAnubisChallenge(html))
+      return Promise.resolve(html);
+    return tryMirror(url).then(function(m) {
+      return m || html;
+    });
+  }
+  return get(url, null, "follow").then(function(res) {
+    return res.text().then(function(html) {
+      collectCookies(res, jar);
+      var ch = extractAnubisChallenge(html);
+      if (!ch)
+        return html;
+      var t0 = Date.now();
+      var nonce = solvePow(ch.randomData, ch.difficulty, 5e5);
+      if (nonce === null)
+        return withMirrorFallback(html);
+      var hash = sha256Hex(ch.randomData + nonce);
+      var elapsed = Date.now() - t0;
+      var pass = ORIGEN + "/.within.website/x/cmd/anubis/api/pass-challenge?id=" + encodeURIComponent(ch.id) + "&response=" + hash + "&nonce=" + nonce + "&redir=" + encodeURIComponent(url) + "&elapsedTime=" + elapsed;
+      return get(pass, { "Cookie": cookieHeader(jar), "Referer": url }, "manual").then(function(res2) {
+        collectCookies(res2, jar);
+        var loc = null;
+        try {
+          loc = res2.headers.get("location");
+        } catch (e) {
+          loc = null;
+        }
+        var target = loc || url;
+        return get(target, { "Cookie": cookieHeader(jar), "Referer": pass }, "follow");
+      }).then(function(res3) {
+        return res3.text();
+      }).then(function(html2) {
+        return withMirrorFallback(html2);
+      }).catch(function() {
+        return withMirrorFallback(html);
+      });
+    });
+  });
+}
 function decodeEmbed69Page(html) {
   var dataLink = extractDataLink(html);
   if (!dataLink || !dataLink.length)
     return [];
-  var pow = extractPowConstants(html);
-  if (!pow.challenge)
-    return [];
-  var nonce = solvePow(pow.challenge, pow.difficulty);
-  if (nonce === null)
-    return [];
-  var key = aesKeyBytes(pow.challenge, nonce, pow.salt || "");
+  var key = null;
+  var link = extractLinkConstants(html);
+  if (link.challenge) {
+    key = aesKeyBytes(link.challenge, "", link.salt || "");
+  } else {
+    var pow = extractPowConstants(html);
+    if (!pow.challenge)
+      return [];
+    var nonce = solvePow(pow.challenge, pow.difficulty);
+    if (nonce === null)
+      return [];
+    key = aesKeyBytes(pow.challenge, nonce, pow.salt || "");
+  }
   var out = [];
   var seen = {};
   for (var i = 0; i < dataLink.length; i++) {
@@ -8636,7 +8811,7 @@ function resolveEntry(entry) {
   return resolveViaShared(entry.url, label, entry.language, entry.url, headers);
 }
 function resolveEmbed69(src) {
-  return fetchText(src, {
+  return fetchEmbed69Page(src, {
     headers: {
       "X-Requested-With": "XMLHttpRequest",
       Referer: SITE + "/",

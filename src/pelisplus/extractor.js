@@ -43,7 +43,7 @@
 
 import { fetchText, fetchJson } from '../shared/http.js';
 import { getEmbedResolver, getServerLabel, mapDomain } from '../shared/embedResolvers.js';
-import { decodeEmbed69Page, resolveHostStream, familyOf } from './embed69.js';
+import { decodeEmbed69Page, resolveHostStream, familyOf, fetchEmbed69Page } from './embed69.js';
 
 // ---------------------------------------------------------------------------
 // Constantes
@@ -393,8 +393,9 @@ function resolveVideoPage(html) {
 }
 
 // Página embed69: /f/ trae el dataLink cifrado; /video/ no.
+// fetchEmbed69Page pasa el reto Anubis del sitio si aparece.
 function resolveEmbed69(src) {
-  return fetchText(src, {
+  return fetchEmbed69Page(src, {
     headers: {
       'X-Requested-With': 'XMLHttpRequest',
       'Referer': SITE + '/',
